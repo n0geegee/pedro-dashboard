@@ -1,0 +1,15 @@
+{
+  "base": "/linus1/hermes/projects/pedro_dashboard/skins_gpt2_2026-06-15",
+  "prompts": {
+    "spring_fairytale": "/linus1/hermes/projects/pedro_dashboard/skins_gpt2_2026-06-15/01_PROMPTS/spring_fairytale_prompt.md",
+    "winter_frost": "/linus1/hermes/projects/pedro_dashboard/skins_gpt2_2026-06-15/01_PROMPTS/winter_frost_prompt.md",
+    "summer_glow": "/linus1/hermes/projects/pedro_dashboard/skins_gpt2_2026-06-15/01_PROMPTS/summer_glow_prompt.md",
+    "autumn_amber": "/linus1/hermes/projects/pedro_dashboard/skins_gpt2_2026-06-15/01_PROMPTS/autumn_amber_prompt.md"
+  },
+  "outputs": {
+    "spring_fairytale": "/linus1/hermes/projects/pedro_dashboard/skins_gpt2_2026-06-15/02_RAW_GPT2/pedro_skin_spring_fairytale_raw_gpt2.png",
+    "winter_frost": "/linus1/hermes/projects/pedro_dashboard/skins_gpt2_2026-06-15/02_RAW_GPT2/pedro_skin_winter_frost_raw_gpt2.png",
+    "summer_glow": "/linus1/hermes/projects/pedro_dashboard/skins_gpt2_2026-06-15/02_RAW_GPT2/pedro_skin_summer_glow_raw_gpt2.png",
+    "autumn_amber": "/linus1/hermes/projects/pedro_dashboard/skins_gpt2_2026-06-15/02_RAW_GPT2/pedro_skin_autumn_amber_raw_gpt2.png"
+  }
+}

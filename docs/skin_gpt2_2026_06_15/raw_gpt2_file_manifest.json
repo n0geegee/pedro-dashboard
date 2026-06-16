@@ -1,0 +1,46 @@
+[
+  {
+    "name": "spring_fairytale",
+    "path": "/linus1/hermes/projects/pedro_dashboard/skins_gpt2_2026-06-15/02_RAW_GPT2/pedro_skin_spring_fairytale_raw_gpt2.png",
+    "bytes": 2099755,
+    "sha256": "39765e957526f1f05ada027ee830f9c76655c3cff4161cf1524e71cf60df8a73",
+    "size": [
+      1586,
+      992
+    ],
+    "mode": "RGB"
+  },
+  {
+    "name": "winter_frost",
+    "path": "/linus1/hermes/projects/pedro_dashboard/skins_gpt2_2026-06-15/02_RAW_GPT2/pedro_skin_winter_frost_raw_gpt2.png",
+    "bytes": 2174545,
+    "sha256": "290fc53350c1ad092282688058a6e8a00b4dcde9437a049b464fed1e5b1d3c09",
+    "size": [
+      1586,
+      992
+    ],
+    "mode": "RGB"
+  },
+  {
+    "name": "summer_glow",
+    "path": "/linus1/hermes/projects/pedro_dashboard/skins_gpt2_2026-06-15/02_RAW_GPT2/pedro_skin_summer_glow_raw_gpt2.png",
+    "bytes": 1511019,
+    "sha256": "d736c305cc5c4d553d67773f5337d06c2c4ce6891e0d1e08f140defc15264746",
+    "size": [
+      1586,
+      992
+    ],
+    "mode": "RGB"
+  },
+  {
+    "name": "autumn_amber",
+    "path": "/linus1/hermes/projects/pedro_dashboard/skins_gpt2_2026-06-15/02_RAW_GPT2/pedro_skin_autumn_amber_raw_gpt2.png",
+    "bytes": 1413905,
+    "sha256": "70c4f73882968ab21c521c2100759d8f7687bf718dac261fdb39fa3c4733e99c",
+    "size": [
+      1586,
+      992
+    ],
+    "mode": "RGB"
+  }
+]

@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Hermes Oracle — bottom ticker frame. 1920×90. The whole strip
+     is decorative chrome; the dashboard renders its own text on top. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 90" width="1920" height="90"
+     preserveAspectRatio="none">
+  <defs>
+    <linearGradient id="t-bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="rgba(255,255,255,0.08)"/>
+      <stop offset="100%" stop-color="rgba(0,0,0,0.55)"/>
+    </linearGradient>
+    <linearGradient id="t-gold" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#e2c76c"/>
+      <stop offset="100%" stop-color="#8a6f30"/>
+    </linearGradient>
+    <radialGradient id="t-em" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#78ffd5"/>
+      <stop offset="100%" stop-color="rgba(67,240,181,0)"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Base plate -->
+  <rect x="0" y="0" width="1920" height="90" fill="url(#t-bg)"/>
+
+  <!-- Top + bottom gold rails -->
+  <line x1="0" y1="2" x2="1920" y2="2" stroke="url(#t-gold)" stroke-width="2" opacity="0.85"/>
+  <line x1="0" y1="88" x2="1920" y2="88" stroke="url(#t-gold)" stroke-width="1" opacity="0.55"/>
+
+  <!-- Slot for the time on the left -->
+  <rect x="24" y="14" width="200" height="62" rx="8" ry="8"
+        fill="rgba(0,0,0,0.45)" stroke="rgba(184,155,79,0.45)" stroke-width="1"/>
+  <circle cx="40" cy="45" r="3" fill="url(#t-em)"/>
+
+  <!-- Indicator lamps along the rail -->
+  <g>
+    <circle cx="260" cy="45" r="3" fill="url(#t-em)"/>
+    <circle cx="500" cy="45" r="3" fill="url(#t-em)"/>
+    <circle cx="740" cy="45" r="3" fill="url(#t-em)"/>
+    <circle cx="980" cy="45" r="3" fill="url(#t-em)"/>
+    <circle cx="1220" cy="45" r="3" fill="url(#t-em)"/>
+    <circle cx="1460" cy="45" r="3" fill="url(#t-em)"/>
+    <circle cx="1700" cy="45" r="3" fill="url(#t-em)"/>
+    <circle cx="1880" cy="45" r="3" fill="url(#t-em)"/>
+  </g>
+
+  <!-- Decorative vine strip in the middle -->
+  <path d="M 280 70 C 340 55, 380 85, 440 70 C 500 55, 540 85, 600 70 C 660 55, 700 85, 760 70
+           C 820 55, 860 85, 920 70 C 980 55, 1020 85, 1080 70 C 1140 55, 1180 85, 1240 70
+           C 1300 55, 1340 85, 1400 70 C 1460 55, 1500 85, 1560 70 C 1620 55, 1660 85, 1720 70"
+        fill="none" stroke="rgba(184,155,79,0.40)" stroke-width="1.5"/>
+
+  <!-- End brass caps -->
+  <rect x="0" y="0" width="14" height="90" fill="rgba(184,155,79,0.18)"/>
+  <rect x="1906" y="0" width="14" height="90" fill="rgba(184,155,79,0.18)"/>
+</svg>

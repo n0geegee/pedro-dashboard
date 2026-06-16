@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1200" preserveAspectRatio="none">
+  <defs>
+    <radialGradient id="led" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#fff0a8" stop-opacity="1"/><stop offset="0.32" stop-color="#fff0a8" stop-opacity="0.58"/><stop offset="1" stop-color="#fff0a8" stop-opacity="0"/></radialGradient>
+    <filter id="soft"><feGaussianBlur stdDeviation="2.2"/></filter>
+  </defs>
+  <g opacity="0.72">
+    <path d="M28 34H650" stroke="#b6ffc9" stroke-opacity="0.18" stroke-width="2"/>
+    <path d="M1180 34H1892" stroke="#ffe28a" stroke-opacity="0.14" stroke-width="2"/>
+    <path d="M28 1166H760" stroke="#ffe28a" stroke-opacity="0.15" stroke-width="2"/>
+    <path d="M1160 1166H1892" stroke="#b6ffc9" stroke-opacity="0.16" stroke-width="2"/>
+    <path d="M32 34V520" stroke="#b6ffc9" stroke-opacity="0.16" stroke-width="2"/>
+    <path d="M1888 34V620" stroke="#ffe28a" stroke-opacity="0.12" stroke-width="2"/>
+  </g>
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round" filter="url(#soft)">
+    <path d="M46 1160C112 1030 70 870 148 736C230 596 186 412 308 140" stroke="#a7ffc2" stroke-opacity="0.32" stroke-width="3"/>
+    <path d="M1872 1128C1784 982 1830 820 1726 666C1644 542 1664 326 1534 122" stroke="#a7ffc2" stroke-opacity="0.22" stroke-width="3"/>
+    <path d="M272 44C450 88 640 40 820 70" stroke="#ffe28a" stroke-opacity="0.16" stroke-width="2"/>
+    <path d="M1020 48C1220 94 1420 40 1605 90" stroke="#a7ffc2" stroke-opacity="0.15" stroke-width="2"/>
+  </g>
+  <g fill="#b8ffd0" fill-opacity="0.31" filter="url(#soft)">
+    <ellipse cx="105" cy="835" rx="30" ry="9" transform="rotate(-35 105 835)"/>
+    <ellipse cx="178" cy="650" rx="23" ry="7" transform="rotate(26 178 650)"/>
+    <ellipse cx="270" cy="438" rx="20" ry="7" transform="rotate(-24 270 438)"/>
+    <ellipse cx="1768" cy="770" rx="32" ry="9" transform="rotate(31 1768 770)"/>
+    <ellipse cx="1650" cy="548" rx="23" ry="7" transform="rotate(-28 1650 548)"/>
+  </g>
+  <g opacity="0.86">
+    <circle cx="86" cy="92" r="6" fill="url(#led)"/>
+    <circle cx="238" cy="64" r="4" fill="url(#led)"/>
+    <circle cx="498" cy="70" r="3.5" fill="url(#led)"/>
+    <circle cx="1680" cy="88" r="5" fill="url(#led)"/>
+    <circle cx="1838" cy="230" r="4" fill="url(#led)"/>
+    <circle cx="78" cy="1080" r="5" fill="url(#led)"/>
+    <circle cx="360" cy="1134" r="3.8" fill="url(#led)"/>
+    <circle cx="1520" cy="1138" r="4.5" fill="url(#led)"/>
+    <circle cx="1810" cy="1085" r="4" fill="url(#led)"/>
+  </g>
+</svg>

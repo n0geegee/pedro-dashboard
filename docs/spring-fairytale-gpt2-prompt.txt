@@ -1,0 +1,25 @@
+Create a fairy-tale spring overlay/background for Pedro, a passive home kiosk dashboard.
+
+PURPOSE:
+Seasonal Spring skin graphic overlay to sit behind dark translucent dashboard cards. It should make the dashboard feel magical, fresh and storybook-like, but still readable from across the room.
+
+FORMAT AND COMPOSITION:
+Landscape 16:10 / 1920x1200. Full-screen ambient background/overlay. Keep the central card zones calm and low-contrast; put most decorative detail near the edges and corners. No UI panels, no mock dashboard, no text.
+
+MAIN VISUAL:
+A subtle enchanted spring atmosphere: soft moonlit/morning garden glow, delicate vines, tiny buds, faint fireflies or magical pollen, dreamy mist around edges. It should feel like a quiet fairytale forest seen through glass, not a literal cartoon scene.
+
+STYLE:
+Premium minimal digital ambience, elegant home technology screen, dark-mode friendly, soft painterly light, refined and calm. Slightly magical and poetic, not childish, not a children’s book page full of objects.
+
+COLORS:
+Deep graphite-green base, fresh mint glow, very subtle warm pink buds, tiny golden firefly accents. Keep overall luminance low enough for white dashboard text to remain readable.
+
+TEXT IN IMAGE:
+No text in the image.
+
+DO NOT INCLUDE:
+No people, no animals, no fairies, no faces, no butterflies as main subjects, no large flowers, no readable letters, no logos, no UI cards, no icons, no watermark, no bright busy center, no pastel kindergarten style.
+
+QUALITY REQUIREMENTS:
+The output must work as a semi-transparent/soft-light overlay over a dark dashboard. Edges may contain decorative details; center must be calm. Smooth gradients, no clutter, no hard contrast behind card text.

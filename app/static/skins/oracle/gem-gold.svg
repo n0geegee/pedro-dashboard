@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Hermes Oracle — gold gem indicator. 256×256. Used for status gems. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs>
+    <radialGradient id="gem-gold" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#fff4cc"/>
+      <stop offset="35%" stop-color="#e2c76c"/>
+      <stop offset="80%" stop-color="#8a6f30"/>
+      <stop offset="100%" stop-color="rgba(0,0,0,0)"/>
+    </radialGradient>
+    <linearGradient id="gem-gold-rim" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#e2c76c"/>
+      <stop offset="100%" stop-color="#3a2c0a"/>
+    </linearGradient>
+  </defs>
+  <!-- Brass socket -->
+  <circle cx="128" cy="128" r="100" fill="rgba(0,0,0,0.55)" stroke="url(#gem-gold-rim)" stroke-width="6"/>
+  <circle cx="128" cy="128" r="80" fill="none" stroke="rgba(184,155,79,0.4)" stroke-width="2"/>
+  <!-- Gem body -->
+  <circle cx="128" cy="128" r="62" fill="url(#gem-gold)"/>
+  <!-- Highlight -->
+  <ellipse cx="106" cy="106" rx="18" ry="12" fill="#fff4cc" opacity="0.7"/>
+  <circle cx="116" cy="116" r="5" fill="#ffffff" opacity="0.85"/>
+</svg>

@@ -1,0 +1,510 @@
+/* HERMES ORACLE — CSS theme layer for Pedro Dashboard
+ * Adds a "dark fantasy / sci-fi command center" skin (theme = oracle)
+ * on top of the existing v1.1 layout and contract. No layout/JS changes.
+ *
+ * Strategy:
+ *  - Theme is opt-in via <body data-skin="oracle">.
+ *  - Asset hooks are CSS variables (--oracle-*). When assets are missing
+ *    the CSS still works because all decoration is implemented with
+ *    gradients/box-shadows/pseudo-elements.
+ *  - We DO NOT touch .layout, .card, .vb, .weather, .calendar, .alerts,
+ *    .route, .ticker, .framed-video, .framed-slideshow etc. selectors in
+ *    the existing styles.css. We re-skin via theme variables and a small
+ *    set of additive .ornate-* classes that are also safe when missing.
+ *
+ * Origin: 04_CODEX_TASKS_KROK_PO_KROKU.md / 02_TARGET_STYLE_SPEC.md /
+ *         07_CSS_STARTER_HERMES_ORACLE.md (Oracle Dashboard Skin Plan, 2026-06-15)
+ */
+
+:root {
+  --oracle-gold: #b89b4f;
+  --oracle-gold-bright: #e2c76c;
+  --oracle-gold-soft: rgba(184, 155, 79, 0.55);
+  --oracle-gold-dim: rgba(184, 155, 79, 0.22);
+
+  --oracle-emerald: #43f0b5;
+  --oracle-emerald-bright: #78ffd5;
+  --oracle-emerald-soft: rgba(67, 240, 181, 0.38);
+  --oracle-emerald-dim: rgba(67, 240, 181, 0.13);
+
+  --oracle-bg-0: #030706;
+  --oracle-bg-1: #07100f;
+  --oracle-bg-2: #020504;
+  --oracle-bg-3: #0b1714;
+
+  --oracle-fg: #f3ead1;
+  --oracle-fg-mute: #9fb3aa;
+  --oracle-fg-dim: #6f8178;
+
+  --oracle-red: #ff4b42;
+  --oracle-blue: #4ea0ff;
+
+  --oracle-radius: 14px;
+  --oracle-frame: 14px;
+
+  --oracle-shadow-outer: 0 18px 45px rgba(0, 0, 0, 0.75);
+  --oracle-shadow-inner: inset 0 0 30px rgba(0, 0, 0, 0.85);
+  --oracle-shadow-glow: 0 0 24px rgba(67, 240, 181, 0.16);
+
+  --oracle-font-ui: "Inter", "Roboto Condensed", system-ui, sans-serif;
+  --oracle-font-title: "Cinzel", "Trajan Pro", Georgia, serif;
+  --oracle-font-data: "JetBrains Mono", "Roboto Mono", monospace;
+
+  /* Asset hooks (filled in 05_ASSET_IMPLEMENTATION_GUIDE.md).
+     When empty, fallback CSS decorations take over. */
+  --oracle-corner-url: url("/static/skins/oracle/panel-corner.svg");
+  --oracle-header-url: url("/static/skins/oracle/header-plate.svg");
+  --oracle-panel-bg-url: url("/static/skins/oracle/panel-bg-tile.svg");
+  --oracle-ticker-frame-url: url("/static/skins/oracle/ticker-frame.svg");
+  --oracle-video-frame-url: url("/static/skins/oracle/video-frame.svg");
+  --oracle-slideshow-frame-url: url("/static/skins/oracle/slideshow-frame.svg");
+  --oracle-gem-emerald-url: url("/static/skins/oracle/gem-emerald.svg");
+  --oracle-gem-gold-url: url("/static/skins/oracle/gem-gold.svg");
+}
+
+/* ========== THEME SWITCH: oracle ========== */
+
+body[data-skin="oracle"] {
+  --bg-0: var(--oracle-bg-1);
+  --bg-1: var(--oracle-bg-1);
+  --bg-2: var(--oracle-bg-3);
+  --bg-3: var(--oracle-bg-3);
+  --bg-4: var(--oracle-bg-2);
+  --line: var(--oracle-gold-dim);
+  --line-2: var(--oracle-gold-soft);
+  --fg: var(--oracle-fg);
+  --fg-soft: var(--oracle-fg);
+  --fg-mute: var(--oracle-fg-mute);
+  --fg-dim: var(--oracle-fg-dim);
+  --accent: var(--oracle-emerald);
+  --accent-soft: var(--oracle-emerald-soft);
+  --red: var(--oracle-red);
+  --red-2: var(--oracle-red);
+  --green: var(--oracle-emerald-bright);
+  --green-soft: var(--oracle-emerald-soft);
+  --orange: var(--oracle-gold-bright);
+  --yellow: var(--oracle-gold-bright);
+  --blue: var(--oracle-blue);
+  --blue-soft: rgba(78, 160, 255, 0.18);
+  --poland: #dc1d24;
+
+  --shadow-1:
+    0 1px 0 rgba(255, 255, 255, 0.02),
+    0 12px 30px rgba(0, 0, 0, 0.6),
+    0 0 0 1px rgba(184, 155, 79, 0.06);
+
+  --body-bg:
+    radial-gradient(circle at 20% 10%, rgba(67, 240, 181, 0.08), transparent 32%),
+    radial-gradient(circle at 80% 30%, rgba(184, 155, 79, 0.06), transparent 28%),
+    radial-gradient(circle at 50% 100%, rgba(67, 240, 181, 0.04), transparent 38%),
+    linear-gradient(180deg, var(--oracle-bg-0) 0%, var(--oracle-bg-2) 100%);
+
+  /* No body-level overlay for oracle — keeps center calm for readability. */
+  --skin-overlay-url: none;
+  --skin-overlay-opacity: 0;
+  --skin-overlay-blend: normal;
+  --skin-edge-url: none;
+  --skin-edge-opacity: 0;
+  --skin-edge-blend: normal;
+}
+
+body[data-skin="oracle"] {
+  font-family: var(--oracle-font-ui);
+}
+
+/* ========== PANEL CHROME — additive .ornate-panel wrapper ==========
+ * Applied via theme; v1.1 .card stays the structural wrapper so JS
+ * keeps working.
+ */
+
+body[data-skin="oracle"] .card {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--oracle-radius);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.005)),
+    repeating-linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.025) 0,
+      rgba(255, 255, 255, 0.025) 1px,
+      transparent 1px,
+      transparent 9px
+    ),
+    radial-gradient(circle at 50% 0%, rgba(67, 240, 181, 0.08), transparent 45%),
+    var(--bg-1);
+  border: 1px solid var(--oracle-gold-dim);
+  box-shadow:
+    0 0 0 1px rgba(67, 240, 181, 0.10),
+    var(--oracle-shadow-outer),
+    inset 0 0 24px rgba(0, 0, 0, 0.55);
+}
+
+body[data-skin="oracle"] .card::before {
+  content: "";
+  position: absolute;
+  inset: 5px;
+  border-radius: calc(var(--oracle-radius) - 5px);
+  border: 1px solid rgba(184, 155, 79, 0.32);
+  pointer-events: none;
+  box-shadow:
+    inset 0 0 18px rgba(67, 240, 181, 0.07),
+    0 0 8px rgba(67, 240, 181, 0.03);
+  z-index: 1;
+}
+
+body[data-skin="oracle"] .card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 0% 0%, rgba(184, 155, 79, 0.18), transparent 12%),
+    radial-gradient(circle at 100% 0%, rgba(67, 240, 181, 0.16), transparent 12%),
+    radial-gradient(circle at 0% 100%, rgba(67, 240, 181, 0.12), transparent 14%),
+    radial-gradient(circle at 100% 100%, rgba(184, 155, 79, 0.16), transparent 14%);
+  pointer-events: none;
+  opacity: 0.85;
+  z-index: 1;
+}
+
+body[data-skin="oracle"] .card > * {
+  position: relative;
+  z-index: 2;
+}
+
+/* Corner ornaments — added by app.js as <div class="oracle-corner oracle-corner--*"> */
+
+body[data-skin="oracle"] .oracle-corner {
+  position: absolute;
+  width: 96px;
+  height: 96px;
+  background-image: var(--oracle-corner-url);
+  background-repeat: no-repeat;
+  background-size: contain;
+  background-position: center;
+  pointer-events: none;
+  z-index: 4;
+  filter: drop-shadow(0 0 6px rgba(67, 240, 181, 0.15));
+}
+
+body[data-skin="oracle"] .oracle-corner--tl { top: 6px;    left: 6px;   }
+body[data-skin="oracle"] .oracle-corner--tr { top: 6px;    right: 6px;  transform: scaleX(-1); }
+body[data-skin="oracle"] .oracle-corner--bl { bottom: 6px; left: 6px;   transform: scaleY(-1); }
+body[data-skin="oracle"] .oracle-corner--br { bottom: 6px; right: 6px;  transform: scale(-1, -1); }
+
+body[data-skin="oracle"] .card--video .oracle-corner,
+body[data-skin="oracle"] .card--slideshow .oracle-corner {
+  width: 70px;
+  height: 70px;
+}
+
+/* Card header — uppercase, gold/emerald gradient bar */
+
+body[data-skin="oracle"] .card__head {
+  border-bottom: 1px solid rgba(184, 155, 79, 0.28);
+  background:
+    linear-gradient(90deg, rgba(184, 155, 79, 0.18), transparent 22%, rgba(67, 240, 181, 0.10) 100%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(0, 0, 0, 0.22)),
+    var(--oracle-header-url);
+  background-size: cover, cover, 100% 100%;
+  background-repeat: no-repeat, no-repeat, no-repeat;
+  background-position: center, center, center;
+  text-transform: uppercase;
+  letter-spacing: 0.075em;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--oracle-fg);
+  text-shadow: 0 0 8px rgba(67, 240, 181, 0.25);
+  min-height: 38px;
+  padding: 9px 18px 8px 18px;
+}
+
+body[data-skin="oracle"] .card__num,
+body[data-skin="oracle"] .card__pos {
+  color: var(--oracle-gold-bright);
+  letter-spacing: 0.12em;
+  text-shadow: 0 0 8px rgba(184, 155, 79, 0.35);
+}
+
+body[data-skin="oracle"] .card__title {
+  color: var(--oracle-fg);
+  text-shadow: 0 0 8px rgba(67, 240, 181, 0.25);
+}
+
+/* Body padding slightly bigger so content never touches inner border. */
+
+body[data-skin="oracle"] .card__body {
+  padding: 16px 18px 16px;
+}
+
+/* ========== VIDEO + SLIDESHOW FRAMES ========== */
+
+body[data-skin="oracle"] .card--video .card__body--video,
+body[data-skin="oracle"] .card--slideshow .card__body--slideshow {
+  border: 1px solid rgba(184, 155, 79, 0.36);
+  box-shadow:
+    inset 0 0 28px rgba(0, 0, 0, 0.85),
+    0 0 20px rgba(67, 240, 181, 0.08);
+  background: #000;
+  background-blend-mode: normal;
+  border-radius: 10px;
+  overflow: hidden;
+  position: relative;
+}
+
+body[data-skin="oracle"] .card--video .card__body--video {
+  background-image: var(--oracle-video-frame-url);
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 100% 100%;
+}
+
+body[data-skin="oracle"] .card--slideshow .card__body--slideshow {
+  background-image: var(--oracle-slideshow-frame-url);
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 100% 100%;
+}
+
+body[data-skin="oracle"] .card--video .card__body--video::before,
+body[data-skin="oracle"] .card--slideshow .card__body--slideshow::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(circle at 50% 50%, transparent 60%, rgba(0, 0, 0, 0.55) 100%);
+  z-index: 2;
+}
+
+body[data-skin="oracle"] .card--video .card__body--video > *,
+body[data-skin="oracle"] .card--slideshow .card__body--slideshow > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* Top-bar for video — emulated window chrome */
+
+body[data-skin="oracle"] .card--video .card__head::after {
+  content: "";
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+body[data-skin="oracle"] .card--video .card__head::before {
+  /* Right-side "window buttons" */
+  margin-left: auto;
+  order: 2;
+}
+
+body[data-skin="oracle"] .card--video .card__num,
+body[data-skin="oracle"] .card--video .card__pos,
+body[data-skin="oracle"] .card--video .card__title {
+  /* Re-flow with window buttons (CSS only). */
+  position: relative;
+  z-index: 3;
+}
+
+/* ========== VB tabs as metal brackets ========== */
+
+body[data-skin="oracle"] .vb__tab {
+  border: 1px solid rgba(184, 155, 79, 0.28);
+  border-radius: 8px 8px 0 0;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(0, 0, 0, 0.2));
+  color: var(--oracle-fg-mute);
+  padding: 8px 16px 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+body[data-skin="oracle"] .vb__tab:hover {
+  color: var(--oracle-emerald-bright);
+  box-shadow: 0 0 12px rgba(67, 240, 181, 0.18);
+}
+
+body[data-skin="oracle"] .vb__tab--active {
+  color: var(--oracle-fg);
+  background: linear-gradient(180deg, rgba(184, 155, 79, 0.18), rgba(67, 240, 181, 0.10));
+  border-bottom: 2px solid var(--oracle-gold-bright);
+  box-shadow: 0 -1px 12px rgba(184, 155, 79, 0.18);
+}
+
+/* ========== Volleyball rows as ornate cards ========== */
+
+body[data-skin="oracle"] .vb__row {
+  position: relative;
+  border-radius: 10px;
+  padding: 12px 14px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(0, 0, 0, 0.18)),
+    rgba(4, 12, 11, 0.82);
+  border: 1px solid rgba(184, 155, 79, 0.20);
+  box-shadow:
+    inset 0 0 0 1px rgba(67, 240, 181, 0.06),
+    0 6px 16px rgba(0, 0, 0, 0.35);
+}
+
+body[data-skin="oracle"] .vb__row + .vb__row {
+  margin-top: 8px;
+}
+
+/* ========== Calendar items ========== */
+
+body[data-skin="oracle"] .calendar__item {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(0, 0, 0, 0.16));
+  border: 1px solid rgba(184, 155, 79, 0.16);
+  border-radius: 8px;
+  padding: 7px 10px;
+}
+
+body[data-skin="oracle"] .calendar__dot {
+  background: var(--oracle-emerald);
+  box-shadow: 0 0 6px rgba(67, 240, 181, 0.7);
+}
+
+/* ========== Alerts as medallion cards ========== */
+
+body[data-skin="oracle"] .alert-card {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(0, 0, 0, 0.18));
+  border: 1px solid rgba(184, 155, 79, 0.18);
+  border-radius: 10px;
+  box-shadow:
+    inset 0 0 0 1px rgba(67, 240, 181, 0.05),
+    0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+body[data-skin="oracle"] .alert-card__icon {
+  background: var(--oracle-gold-soft);
+  box-shadow: 0 0 8px rgba(184, 155, 79, 0.4);
+  border: 1px solid rgba(0, 0, 0, 0.4);
+}
+
+body[data-skin="oracle"] .alert-card__icon--green  { background: var(--oracle-emerald); box-shadow: 0 0 10px rgba(67, 240, 181, 0.6); }
+body[data-skin="oracle"] .alert-card__icon--blue   { background: var(--oracle-blue); box-shadow: 0 0 10px rgba(78, 160, 255, 0.6); }
+body[data-skin="oracle"] .alert-card__icon--orange { background: var(--oracle-gold-bright); box-shadow: 0 0 10px rgba(226, 199, 108, 0.6); }
+body[data-skin="oracle"] .alert-card__icon--red    { background: var(--oracle-red); box-shadow: 0 0 10px rgba(255, 75, 66, 0.6); }
+
+/* ========== Weather — large temp + golden separator ========== */
+
+body[data-skin="oracle"] .weather__temp {
+  color: var(--oracle-fg);
+  text-shadow: 0 0 16px rgba(67, 240, 181, 0.18);
+}
+
+body[data-skin="oracle"] .weather__metrics {
+  border-top: 1px solid rgba(184, 155, 79, 0.22);
+}
+
+/* ========== Route — inset map frame ========== */
+
+body[data-skin="oracle"] .route__map {
+  border: 1px solid rgba(184, 155, 79, 0.32);
+  box-shadow:
+    inset 0 0 20px rgba(0, 0, 0, 0.55),
+    0 0 16px rgba(67, 240, 181, 0.06);
+}
+
+/* ========== TBD — emerald portal ========== */
+
+body[data-skin="oracle"] .card--tbd .card__body {
+  background:
+    repeating-linear-gradient(45deg, rgba(67, 240, 181, 0.05) 0 1px, transparent 1px 14px),
+    radial-gradient(circle at 50% 50%, rgba(67, 240, 181, 0.06), transparent 60%),
+    var(--bg-2);
+  border: 1px dashed rgba(67, 240, 181, 0.32);
+  border-radius: 10px;
+  margin: 4px 0 0;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+/* ========== Ticker — element of the chassis ========== */
+
+body[data-skin="oracle"] .info-ticker {
+  background:
+    linear-gradient(180deg, rgba(4, 7, 12, 0.55), rgba(0, 0, 0, 0.92)),
+    var(--oracle-ticker-frame-url);
+  background-size: cover, 100% 100%;
+  background-repeat: no-repeat, no-repeat;
+  background-position: center, center;
+  border-top: 1px solid rgba(184, 155, 79, 0.32);
+  box-shadow:
+    0 -2px 0 rgba(67, 240, 181, 0.12),
+    0 -10px 28px rgba(0, 0, 0, 0.4);
+}
+
+body[data-skin="oracle"] .ticker-clock {
+  color: var(--oracle-emerald-bright);
+  text-shadow: 0 0 10px rgba(67, 240, 181, 0.4);
+}
+
+body[data-skin="oracle"] .ticker-track span::before {
+  background: var(--oracle-emerald);
+  box-shadow: 0 0 8px rgba(67, 240, 181, 0.8);
+}
+
+body[data-skin="oracle"] .ticker-track {
+  color: var(--oracle-fg);
+}
+
+/* ========== Ornate badge / gem utilities (additive, opt-in) ========== */
+
+body[data-skin="oracle"] .ornate-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 999px;
+  padding: 4px 9px;
+  border: 1px solid rgba(184, 155, 79, 0.30);
+  background: rgba(0, 0, 0, 0.30);
+  color: var(--oracle-fg);
+  font-size: 11px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+body[data-skin="oracle"] .status-gem {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--oracle-emerald);
+  box-shadow: 0 0 10px rgba(67, 240, 181, 0.8);
+}
+body[data-skin="oracle"] .status-gem--gold {
+  background: var(--oracle-gold-bright);
+  box-shadow: 0 0 10px rgba(226, 199, 108, 0.75);
+}
+body[data-skin="oracle"] .status-gem--red {
+  background: var(--oracle-red);
+  box-shadow: 0 0 10px rgba(255, 75, 66, 0.75);
+}
+body[data-skin="oracle"] .status-gem--blue {
+  background: var(--oracle-blue);
+  box-shadow: 0 0 10px rgba(78, 160, 255, 0.75);
+}
+
+/* ========== Status pill for volleyball match tags ========== */
+
+body[data-skin="oracle"] .vb__meta strong {
+  color: var(--oracle-gold-bright);
+}
+
+body[data-skin="oracle"] .vb__when strong {
+  color: var(--oracle-emerald-bright);
+  text-shadow: 0 0 8px rgba(67, 240, 181, 0.3);
+}
+
+/* ========== Polish: brighten card titles, dim bottom row in TBD ========== */
+
+body[data-skin="oracle"] .card--tbd .card__title {
+  color: var(--oracle-emerald);
+  text-shadow: 0 0 10px rgba(67, 240, 181, 0.35);
+}
+
+body[data-skin="oracle"] .muted { color: var(--oracle-fg-mute); }
+body[data-skin="oracle"] .dim   { color: var(--oracle-fg-dim);  font-size: 12px; }
+
+/* When assets are present, swap pseudo-element corners. The fallback
+   pseudo-corner is not used — the .card::before/::after provides the
+   gold rim. Asset slots remain opt-in for later. */

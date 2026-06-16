@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1200" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <radialGradient id="glowA" cx="16%" cy="8%" r="58%">
+      <stop offset="0" stop-color="#c8ffd7" stop-opacity="0.36"/>
+      <stop offset="0.42" stop-color="#7ee38f" stop-opacity="0.13"/>
+      <stop offset="1" stop-color="#000000" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glowB" cx="88%" cy="18%" r="48%">
+      <stop offset="0" stop-color="#ffd7ef" stop-opacity="0.22"/>
+      <stop offset="0.52" stop-color="#ff9ed3" stop-opacity="0.08"/>
+      <stop offset="1" stop-color="#000000" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="firefly" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#fff7b0" stop-opacity="1"/>
+      <stop offset="0.35" stop-color="#fff7b0" stop-opacity="0.42"/>
+      <stop offset="1" stop-color="#fff7b0" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="softBlur"><feGaussianBlur stdDeviation="7"/></filter>
+  </defs>
+
+  <rect width="1920" height="1200" fill="url(#glowA)"/>
+  <rect width="1920" height="1200" fill="url(#glowB)"/>
+
+  <!-- soft fairytale vine silhouettes near edges only; center remains quiet for cards -->
+  <g fill="none" stroke="#a8f0b8" stroke-opacity="0.18" stroke-width="3" stroke-linecap="round" filter="url(#softBlur)">
+    <path d="M42 1160 C110 950, 64 730, 170 560 C250 430, 196 250, 310 90"/>
+    <path d="M1858 1160 C1782 940, 1830 760, 1710 570 C1620 430, 1664 270, 1540 110"/>
+    <path d="M250 1140 C350 980, 340 840, 420 700"/>
+    <path d="M1650 1145 C1540 980, 1588 830, 1500 680"/>
+  </g>
+
+  <g fill="#baf7c7" fill-opacity="0.20" filter="url(#softBlur)">
+    <ellipse cx="120" cy="820" rx="38" ry="13" transform="rotate(-34 120 820)"/>
+    <ellipse cx="210" cy="595" rx="28" ry="10" transform="rotate(26 210 595)"/>
+    <ellipse cx="1736" cy="790" rx="42" ry="14" transform="rotate(32 1736 790)"/>
+    <ellipse cx="1600" cy="520" rx="30" ry="10" transform="rotate(-24 1600 520)"/>
+  </g>
+
+  <!-- tiny magical fireflies, intentionally sparse -->
+  <g opacity="0.68">
+    <circle cx="310" cy="210" r="7" fill="url(#firefly)"/>
+    <circle cx="520" cy="145" r="5" fill="url(#firefly)"/>
+    <circle cx="1490" cy="180" r="6" fill="url(#firefly)"/>
+    <circle cx="1710" cy="340" r="5" fill="url(#firefly)"/>
+    <circle cx="138" cy="360" r="5" fill="url(#firefly)"/>
+    <circle cx="820" cy="84" r="4" fill="url(#firefly)"/>
+    <circle cx="1160" cy="1040" r="5" fill="url(#firefly)" opacity="0.45"/>
+    <circle cx="620" cy="990" r="4" fill="url(#firefly)" opacity="0.38"/>
+  </g>
+
+  <!-- vignette keeps UI readable -->
+  <rect width="1920" height="1200" fill="none" stroke="#06110c" stroke-opacity="0.55" stroke-width="90"/>
+</svg>

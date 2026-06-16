@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1200" preserveAspectRatio="none">
+  <defs>
+    <radialGradient id="g1" cx="14%" cy="-2%" r="70%"><stop offset="0" stop-color="#8dffc0" stop-opacity="0.30"/><stop offset="0.42" stop-color="#2f8c5b" stop-opacity="0.12"/><stop offset="1" stop-color="#000" stop-opacity="0"/></radialGradient>
+    <radialGradient id="g2" cx="86%" cy="4%" r="55%"><stop offset="0" stop-color="#ffd66f" stop-opacity="0.22"/><stop offset="0.50" stop-color="#927130" stop-opacity="0.08"/><stop offset="1" stop-color="#000" stop-opacity="0"/></radialGradient>
+    <radialGradient id="g3" cx="50%" cy="108%" r="72%"><stop offset="0" stop-color="#66dd88" stop-opacity="0.18"/><stop offset="0.50" stop-color="#1b5936" stop-opacity="0.08"/><stop offset="1" stop-color="#000" stop-opacity="0"/></radialGradient>
+    <filter id="blur"><feGaussianBlur stdDeviation="10"/></filter>
+  </defs>
+  <rect width="1920" height="1200" fill="url(#g1)"/>
+  <rect width="1920" height="1200" fill="url(#g2)"/>
+  <rect width="1920" height="1200" fill="url(#g3)"/>
+  <g filter="url(#blur)" opacity="0.24">
+    <path d="M0 0H1920V1200H0z" fill="none" stroke="#b4ffd0" stroke-width="42" stroke-opacity="0.14"/>
+    <path d="M150 1050C380 930 510 1080 720 960S1040 890 1270 1008s390 30 560-100" fill="none" stroke="#ffe28a" stroke-width="5" stroke-opacity="0.22"/>
+  </g>
+</svg>

@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Hermes Oracle — single corner ornament, used 4× with CSS scale/rotate.
+     Rendered as SVG so it is resolution-agnostic, no raster needed, no
+     asset pipeline. 320×320 viewBox, design sits in top-left 240×240. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 320" width="320" height="320">
+  <defs>
+    <linearGradient id="oracle-brass" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#b89b4f"/>
+      <stop offset="55%" stop-color="#e2c76c"/>
+      <stop offset="100%" stop-color="#8a6f30"/>
+    </linearGradient>
+    <linearGradient id="oracle-brass-soft" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="rgba(184,155,79,0.85)"/>
+      <stop offset="100%" stop-color="rgba(184,155,79,0.10)"/>
+    </linearGradient>
+    <radialGradient id="oracle-emerald" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#b6ffe2"/>
+      <stop offset="35%" stop-color="#43f0b5"/>
+      <stop offset="100%" stop-color="rgba(67,240,181,0)"/>
+    </radialGradient>
+    <filter id="oracle-glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="3" result="b"/>
+      <feMerge>
+        <feMergeNode in="b"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Outer L-bracket: top + left strokes meeting at top-left corner -->
+  <path d="M 6 84 L 6 14 Q 6 6 14 6 L 84 6"
+        fill="none" stroke="url(#oracle-brass)" stroke-width="6"
+        stroke-linecap="round" stroke-linejoin="round" filter="url(#oracle-glow)"/>
+  <!-- Inner thin L, parallel offset -->
+  <path d="M 22 110 L 22 30 Q 22 22 30 22 L 110 22"
+        fill="none" stroke="rgba(184,155,79,0.45)" stroke-width="2"
+        stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Decorative vine curl top -->
+  <path d="M 50 6 C 70 4, 88 12, 92 30 C 96 50, 80 58, 70 50 C 62 44, 64 32, 78 30"
+        fill="none" stroke="url(#oracle-brass)" stroke-width="3"
+        stroke-linecap="round" filter="url(#oracle-glow)"/>
+  <!-- Decorative vine curl left -->
+  <path d="M 6 50 C 4 70, 12 88, 30 92 C 50 96, 58 80, 50 70 C 44 62, 32 64, 30 78"
+        fill="none" stroke="url(#oracle-brass)" stroke-width="3"
+        stroke-linecap="round" filter="url(#oracle-glow)"/>
+
+  <!-- Two small leaves on the top vine -->
+  <path d="M 64 14 q 6 4 10 12 q -10 -2 -10 -12 z" fill="url(#oracle-brass-soft)" opacity="0.85"/>
+  <path d="M 84 30 q -2 8 -10 12 q 0 -10 10 -12 z" fill="url(#oracle-brass-soft)" opacity="0.85"/>
+  <!-- Two small leaves on the left vine -->
+  <path d="M 14 64 q 4 6 12 10 q -2 -10 -12 -10 z" fill="url(#oracle-brass-soft)" opacity="0.85"/>
+  <path d="M 30 84 q 8 -2 12 -10 q -10 0 -12 10 z" fill="url(#oracle-brass-soft)" opacity="0.85"/>
+
+  <!-- Center emerald gem socket -->
+  <g transform="translate(28 28)">
+    <circle r="14" fill="rgba(0,0,0,0.55)" stroke="url(#oracle-brass)" stroke-width="2"/>
+    <circle r="9" fill="url(#oracle-emerald)"/>
+    <circle r="3" fill="#b6ffe2" filter="url(#oracle-glow)"/>
+  </g>
+
+  <!-- Three small brass rivets along the L -->
+  <circle cx="14" cy="100" r="3" fill="url(#oracle-brass)"/>
+  <circle cx="100" cy="14" r="3" fill="url(#oracle-brass)"/>
+  <circle cx="40" cy="40" r="2" fill="rgba(226,199,108,0.7)"/>
+
+  <!-- Faint obsidian base shadow under the corner -->
+  <path d="M 6 130 L 130 130 L 130 6 L 6 6 Z"
+        fill="url(#oracle-brass-soft)" opacity="0.04"/>
+</svg>

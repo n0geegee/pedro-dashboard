@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Hermes Oracle — slideshow frame. Heavier ornamentation; transparent
+     center. 1600×900. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" width="1600" height="900">
+  <defs>
+    <linearGradient id="s-gold" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#e2c76c"/>
+      <stop offset="100%" stop-color="#8a6f30"/>
+    </linearGradient>
+    <radialGradient id="s-em" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#78ffd5"/>
+      <stop offset="100%" stop-color="rgba(67,240,181,0)"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Four corner brackets, slightly bigger than video to mark the photo as a "framed" object -->
+  <g stroke="url(#s-gold)" stroke-width="7" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M 8 90 L 8 18 Q 8 8 18 8 L 90 8"/>
+    <path d="M 1510 8 L 1582 8 Q 1592 8 1592 18 L 1592 90"/>
+    <path d="M 8 810 L 8 882 Q 8 892 18 892 L 90 892"/>
+    <path d="M 1510 892 L 1582 892 Q 1592 892 1592 882 L 1592 810"/>
+  </g>
+
+  <!-- Inner subtle gold inset -->
+  <rect x="22" y="22" width="1556" height="856" rx="4" ry="4"
+        fill="none" stroke="rgba(184,155,79,0.35)" stroke-width="1.5"/>
+
+  <!-- Four emerald gems with sockets at the corner centers -->
+  <g>
+    <g transform="translate(45 45)">
+      <circle r="11" fill="rgba(0,0,0,0.55)" stroke="url(#s-gold)" stroke-width="1.5"/>
+      <circle r="7" fill="url(#s-em)"/>
+      <circle r="2" fill="#b6ffe2"/>
+    </g>
+    <g transform="translate(1555 45)">
+      <circle r="11" fill="rgba(0,0,0,0.55)" stroke="url(#s-gold)" stroke-width="1.5"/>
+      <circle r="7" fill="url(#s-em)"/>
+      <circle r="2" fill="#b6ffe2"/>
+    </g>
+    <g transform="translate(45 855)">
+      <circle r="11" fill="rgba(0,0,0,0.55)" stroke="url(#s-gold)" stroke-width="1.5"/>
+      <circle r="7" fill="url(#s-em)"/>
+      <circle r="2" fill="#b6ffe2"/>
+    </g>
+    <g transform="translate(1555 855)">
+      <circle r="11" fill="rgba(0,0,0,0.55)" stroke="url(#s-gold)" stroke-width="1.5"/>
+      <circle r="7" fill="url(#s-em)"/>
+      <circle r="2" fill="#b6ffe2"/>
+    </g>
+  </g>
+
+  <!-- Brass rivets along long edges -->
+  <g fill="#b89b4f">
+    <circle cx="240" cy="18" r="3"/>
+    <circle cx="540" cy="18" r="3"/>
+    <circle cx="800" cy="18" r="3"/>
+    <circle cx="1060" cy="18" r="3"/>
+    <circle cx="1360" cy="18" r="3"/>
+    <circle cx="240" cy="882" r="3"/>
+    <circle cx="540" cy="882" r="3"/>
+    <circle cx="800" cy="882" r="3"/>
+    <circle cx="1060" cy="882" r="3"/>
+    <circle cx="1360" cy="882" r="3"/>
+  </g>
+
+  <!-- Botanical flourishes between gems and rivets -->
+  <path d="M 110 50 C 150 40, 190 60, 230 50" fill="none" stroke="rgba(184,155,79,0.45)" stroke-width="1.5"/>
+  <path d="M 1370 50 C 1410 40, 1450 60, 1490 50" fill="none" stroke="rgba(184,155,79,0.45)" stroke-width="1.5"/>
+  <path d="M 110 850 C 150 860, 190 840, 230 850" fill="none" stroke="rgba(184,155,79,0.45)" stroke-width="1.5"/>
+  <path d="M 1370 850 C 1410 860, 1450 840, 1490 850" fill="none" stroke="rgba(184,155,79,0.45)" stroke-width="1.5"/>
+</svg>

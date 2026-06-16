@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=1920, initial-scale=1" />
+    <title>HERMES — Pedro Dashboard</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+    <link rel="stylesheet" href="/static/hermes-oracle.css" />
+  </head>
+  <body>
+
+    <main class="layout" role="main">
+      <!-- LEFT COLUMN -->
+      <section class="col col--left" aria-label="Lewa kolumna">
+
+        <article class="card" id="card-weather" data-widget="weather">
+          <header class="card__head">
+            <span class="card__num">1.</span>
+            <h2 class="card__title">POGODA NA DZIŚ</h2>
+          </header>
+          <div class="card__body" data-bind="body">
+            <p class="muted">Ładowanie…</p>
+          </div>
+        </article>
+
+        <article class="card card--route" id="card-route" data-widget="route">
+          <header class="card__head">
+            <span class="card__num">2.</span>
+            <h2 class="card__title">TRASA DO PRACY</h2>
+          </header>
+          <div class="card__body" data-bind="body">
+            <p class="muted">Ładowanie…</p>
+          </div>
+        </article>
+
+        <article class="card" id="card-calendar" data-widget="calendar">
+          <header class="card__head">
+            <span class="card__num">3.</span>
+            <h2 class="card__title">KALENDARZ KAMILI</h2>
+          </header>
+          <div class="card__body" data-bind="body">
+            <p class="muted">Ładowanie…</p>
+          </div>
+        </article>
+
+        <article class="card" id="card-alerts" data-widget="alerts">
+          <header class="card__head">
+            <span class="card__num">4.</span>
+            <h2 class="card__title">ALERTY I WIADOMOŚCI OD HERMESA</h2>
+          </header>
+          <div class="card__body" data-bind="body">
+            <p class="muted">Ładowanie…</p>
+          </div>
+        </article>
+      </section>
+
+      <!-- CENTER COLUMN -->
+      <section class="col col--center" aria-label="Centralna kolumna">
+
+        <article class="card card--volleyball" id="card-volleyball" data-widget="volleyball">
+          <header class="card__head">
+            <span class="card__pos">UL:</span>
+            <h2 class="card__title">MECZE REPREZENTACJI POLSKI W SIATKÓWCE</h2>
+          </header>
+          <div class="card__body" data-bind="body">
+            <p class="muted">Ładowanie…</p>
+          </div>
+        </article>
+
+        <article class="card card--tbd" id="card-ll" data-widget="ll_tbd">
+          <header class="card__head">
+            <span class="card__pos">LL:</span>
+            <h2 class="card__title">TBD</h2>
+          </header>
+          <div class="card__body" data-bind="body">
+            <p class="muted">Ładowanie…</p>
+          </div>
+        </article>
+      </section>
+
+      <!-- RIGHT COLUMN -->
+      <section class="col col--right" aria-label="Prawa kolumna">
+
+        <article class="card card--video" id="card-video" data-widget="media">
+          <header class="card__head">
+            <span class="card__pos">UR:</span>
+            <h2 class="card__title">TRANSMISJA POLSAT SPORT</h2>
+          </header>
+          <div class="card__body card__body--video" data-bind="video-body">
+            <p class="muted">Ładowanie…</p>
+          </div>
+        </article>
+
+        <article class="card card--slideshow" id="card-slideshow" data-widget="media">
+          <header class="card__head">
+            <span class="card__pos">LR:</span>
+            <h2 class="card__title">SLIDE SHOW — GOOGLE PHOTOS</h2>
+          </header>
+          <div class="card__body card__body--slideshow" data-bind="slideshow-body">
+            <p class="muted">Ładowanie…</p>
+          </div>
+        </article>
+      </section>
+    </main>
+
+    <footer class="info-ticker" role="contentinfo" aria-label="Pasek informacyjny">
+      <div class="ticker-clock" id="bottom-clock">--:--</div>
+      <div class="ticker-window">
+        <div class="ticker-track" id="ticker-track">
+          <span>Ładowanie wyników i terminarza reprezentacji Polski…</span>
+        </div>
+      </div>
+    </footer>
+
+    <script src="/static/app.js" defer></script>
+  </body>
+</html>

@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Hermes Oracle — video window frame. Outer border + window-bar top.
+     Inner area MUST stay transparent; the live stream draws there. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" width="1600" height="900">
+  <defs>
+    <linearGradient id="v-bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="rgba(255,255,255,0.10)"/>
+      <stop offset="100%" stop-color="rgba(0,0,0,0.40)"/>
+    </linearGradient>
+    <linearGradient id="v-gold" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#e2c76c"/>
+      <stop offset="100%" stop-color="#8a6f30"/>
+    </linearGradient>
+    <radialGradient id="v-em" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#78ffd5"/>
+      <stop offset="100%" stop-color="rgba(67,240,181,0)"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Outer gold L frame (4 corners drawn explicitly so each is a real asset) -->
+  <!-- Top-left -->
+  <path d="M 4 60 L 4 12 Q 4 4 12 4 L 60 4"
+        fill="none" stroke="url(#v-gold)" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="32" cy="32" r="6" fill="url(#v-em)"/>
+  <circle cx="32" cy="32" r="2" fill="#b6ffe2"/>
+
+  <!-- Top-right -->
+  <path d="M 1540 4 L 1588 4 Q 1596 4 1596 12 L 1596 60"
+        fill="none" stroke="url(#v-gold)" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="1568" cy="32" r="6" fill="url(#v-em)"/>
+  <circle cx="1568" cy="32" r="2" fill="#b6ffe2"/>
+
+  <!-- Bottom-left -->
+  <path d="M 4 840 L 4 888 Q 4 896 12 896 L 60 896"
+        fill="none" stroke="url(#v-gold)" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="32" cy="868" r="6" fill="url(#v-em)"/>
+  <circle cx="32" cy="868" r="2" fill="#b6ffe2"/>
+
+  <!-- Bottom-right -->
+  <path d="M 1540 896 L 1588 896 Q 1596 896 1596 888 L 1596 840"
+        fill="none" stroke="url(#v-gold)" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="1568" cy="868" r="6" fill="url(#v-em)"/>
+  <circle cx="1568" cy="868" r="2" fill="#b6ffe2"/>
+
+  <!-- Subtle vine flourishes on long edges -->
+  <path d="M 80 10 C 200 4, 320 18, 440 10 C 560 2, 680 16, 800 10 C 920 4, 1040 18, 1160 10 C 1280 2, 1400 16, 1520 10"
+        fill="none" stroke="rgba(184,155,79,0.40)" stroke-width="1.5"/>
+  <path d="M 80 890 C 200 896, 320 882, 440 890 C 560 898, 680 884, 800 890 C 920 896, 1040 882, 1160 890 C 1280 898, 1400 884, 1520 890"
+        fill="none" stroke="rgba(184,155,79,0.40)" stroke-width="1.5"/>
+</svg>

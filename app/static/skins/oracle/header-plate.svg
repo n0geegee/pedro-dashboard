@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Hermes Oracle — header plate strip. Tiles horizontally on the
+     panel title bar. 1400×120 viewBox. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 120" width="1400" height="120"
+     preserveAspectRatio="none">
+  <defs>
+    <linearGradient id="hdr-bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="rgba(255,255,255,0.10)"/>
+      <stop offset="50%" stop-color="rgba(184,155,79,0.06)"/>
+      <stop offset="100%" stop-color="rgba(0,0,0,0.30)"/>
+    </linearGradient>
+    <linearGradient id="hdr-gold" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#e2c76c"/>
+      <stop offset="100%" stop-color="#8a6f30"/>
+    </linearGradient>
+    <radialGradient id="hdr-em" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#78ffd5"/>
+      <stop offset="100%" stop-color="rgba(67,240,181,0)"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Plate background -->
+  <rect x="0" y="0" width="1400" height="120" fill="url(#hdr-bg)"/>
+
+  <!-- Top + bottom thin gold rails -->
+  <line x1="0" y1="2" x2="1400" y2="2" stroke="url(#hdr-gold)" stroke-width="2" opacity="0.85"/>
+  <line x1="0" y1="118" x2="1400" y2="118" stroke="url(#hdr-gold)" stroke-width="1" opacity="0.55"/>
+
+  <!-- Center engraved double line -->
+  <line x1="40" y1="76" x2="1360" y2="76" stroke="rgba(184,155,79,0.35)" stroke-width="1"/>
+  <line x1="40" y1="80" x2="1360" y2="80" stroke="rgba(184,155,79,0.18)" stroke-width="1"/>
+
+  <!-- Three glowing emerald nodes evenly spaced (decorative, not text) -->
+  <g>
+    <circle cx="200" cy="40" r="6" fill="url(#hdr-em)"/>
+    <circle cx="200" cy="40" r="2" fill="#b6ffe2"/>
+    <circle cx="700" cy="40" r="6" fill="url(#hdr-em)"/>
+    <circle cx="700" cy="40" r="2" fill="#b6ffe2"/>
+    <circle cx="1200" cy="40" r="6" fill="url(#hdr-em)"/>
+    <circle cx="1200" cy="40" r="2" fill="#b6ffe2"/>
+  </g>
+
+  <!-- Brass rivets at both ends -->
+  <circle cx="20" cy="60" r="4" fill="#b89b4f" stroke="rgba(0,0,0,0.4)" stroke-width="0.6"/>
+  <circle cx="1380" cy="60" r="4" fill="#b89b4f" stroke="rgba(0,0,0,0.4)" stroke-width="0.6"/>
+
+  <!-- Subtle vine flourishes -->
+  <path d="M 60 60 C 100 50, 140 70, 180 60" fill="none"
+        stroke="rgba(184,155,79,0.45)" stroke-width="1.5"/>
+  <path d="M 1220 60 C 1260 50, 1300 70, 1340 60" fill="none"
+        stroke="rgba(184,155,79,0.45)" stroke-width="1.5"/>
+</svg>

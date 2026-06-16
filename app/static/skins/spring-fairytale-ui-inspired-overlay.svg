@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1200" preserveAspectRatio="none">
+  <defs>
+    <radialGradient id="mintGlow" cx="18%" cy="8%" r="62%">
+      <stop offset="0" stop-color="#b8ffd0" stop-opacity="0.38"/>
+      <stop offset="0.35" stop-color="#62e08c" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#000" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="goldGlow" cx="82%" cy="4%" r="48%">
+      <stop offset="0" stop-color="#ffe8a1" stop-opacity="0.20"/>
+      <stop offset="0.55" stop-color="#d6a842" stop-opacity="0.07"/>
+      <stop offset="1" stop-color="#000" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="bottomMist" cx="50%" cy="100%" r="70%">
+      <stop offset="0" stop-color="#7ee39a" stop-opacity="0.16"/>
+      <stop offset="0.48" stop-color="#2e8c56" stop-opacity="0.07"/>
+      <stop offset="1" stop-color="#000" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="firefly" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#fff2a8" stop-opacity="1"/>
+      <stop offset="0.30" stop-color="#fff2a8" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#fff2a8" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="soft"><feGaussianBlur stdDeviation="3"/></filter>
+  </defs>
+
+  <!-- ambient only; content/card centers stay dark -->
+  <rect width="1920" height="1200" fill="url(#mintGlow)"/>
+  <rect width="1920" height="1200" fill="url(#goldGlow)"/>
+  <rect width="1920" height="1200" fill="url(#bottomMist)"/>
+
+  <!-- edge vines: sparse, outside the dense text centers -->
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round" filter="url(#soft)">
+    <path d="M24 1148 C92 1012 60 862 142 720 C228 570 166 390 286 104" stroke="#a8f7bd" stroke-opacity="0.26" stroke-width="4"/>
+    <path d="M1888 1126 C1798 980 1836 826 1734 668 C1648 538 1668 322 1538 98" stroke="#a8f7bd" stroke-opacity="0.20" stroke-width="4"/>
+    <path d="M310 38 C520 84 650 30 830 66" stroke="#c9ffd4" stroke-opacity="0.14" stroke-width="3"/>
+    <path d="M1020 44 C1220 92 1370 36 1560 86" stroke="#ffe8a1" stroke-opacity="0.10" stroke-width="3"/>
+    <path d="M250 1170 C340 1060 352 956 432 850" stroke="#9bf0ad" stroke-opacity="0.18" stroke-width="3"/>
+    <path d="M1514 1160 C1438 1050 1462 930 1390 820" stroke="#9bf0ad" stroke-opacity="0.14" stroke-width="3"/>
+  </g>
+
+  <!-- small leaves/buds near edges -->
+  <g fill="#b8ffd0" fill-opacity="0.24" filter="url(#soft)">
+    <ellipse cx="96" cy="828" rx="32" ry="10" transform="rotate(-36 96 828)"/>
+    <ellipse cx="176" cy="650" rx="22" ry="8" transform="rotate(24 176 650)"/>
+    <ellipse cx="260" cy="458" rx="24" ry="8" transform="rotate(-22 260 458)"/>
+    <ellipse cx="1760" cy="770" rx="34" ry="11" transform="rotate(31 1760 770)"/>
+    <ellipse cx="1654" cy="560" rx="24" ry="8" transform="rotate(-28 1654 560)"/>
+    <ellipse cx="1486" cy="176" rx="20" ry="7" transform="rotate(28 1486 176)"/>
+  </g>
+  <g fill="#ffb7dc" fill-opacity="0.18" filter="url(#soft)">
+    <circle cx="136" cy="975" r="7"/>
+    <circle cx="225" cy="1100" r="5"/>
+    <circle cx="1688" cy="1030" r="6"/>
+    <circle cx="1586" cy="186" r="5"/>
+  </g>
+
+  <!-- sparse fireflies, outside main text blocks -->
+  <g opacity="0.75">
+    <circle cx="118" cy="260" r="7" fill="url(#firefly)"/>
+    <circle cx="380" cy="110" r="5" fill="url(#firefly)"/>
+    <circle cx="728" cy="68" r="4" fill="url(#firefly)"/>
+    <circle cx="1130" cy="86" r="4" fill="url(#firefly)"/>
+    <circle cx="1680" cy="278" r="6" fill="url(#firefly)"/>
+    <circle cx="1820" cy="458" r="4" fill="url(#firefly)"/>
+    <circle cx="108" cy="1065" r="6" fill="url(#firefly)"/>
+    <circle cx="604" cy="1112" r="4" fill="url(#firefly)"/>
+    <circle cx="1268" cy="1118" r="5" fill="url(#firefly)"/>
+    <circle cx="1742" cy="1090" r="5" fill="url(#firefly)"/>
+  </g>
+
+  <!-- soft edge vignette -->
+  <rect width="1920" height="1200" fill="none" stroke="#020905" stroke-opacity="0.72" stroke-width="92"/>
+</svg>
