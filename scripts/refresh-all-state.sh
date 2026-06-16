@@ -56,4 +56,11 @@ for probe in refresh-system-status.py refresh-hermes-status.py refresh-openvikin
   fi
 done
 
+# Voice console idle heartbeat (v1.2). Uses the dedicated voice venv so
+# we do not pollute the system python with python-xlib. If the voice
+# daemon is alive it owns the file; if it crashed, this repaints idle.
+if [[ -x "${PEDRO_VOICE_PY_BIN:-/nonexistent}" ]] && [[ -f "$SCRIPT_DIR/refresh-voice-console.py" ]]; then
+  "$PEDRO_VOICE_PY_BIN" "$SCRIPT_DIR/refresh-voice-console.py" >/dev/null || status=$?
+fi
+
 exit "$status"

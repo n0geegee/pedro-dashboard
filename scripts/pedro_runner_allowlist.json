@@ -1,0 +1,79 @@
+{
+  "_comment": "Pedro runner allowlist — static intent router. Adding an intent is a code change, not a runtime decision. v1.2 covers safe read-only commands against existing state JSON files. Privacy actions are gated by an explicit prefix match so a random utterance cannot flip the household privacy mode unless it contains the canonical phrase.",
+  "version": "1.0",
+  "language": "pl",
+  "intents": [
+    {
+      "id": "status",
+      "phrases": [
+        "status", "stan", "jak się masz", "co u ciebie", "co slychac", "co słychać",
+        "system", "system status", "dashboard"
+      ],
+      "summary_template": "Dashboard działa. Wolne RAM {ram_free} MiB, PID {pid}.",
+      "data_sources": ["system.json", "dashboard.json"]
+    },
+    {
+      "id": "time",
+      "phrases": ["godzina", "która godzina", "ktora godzina", "czas", "time"],
+      "summary_template": "Jest {time}.",
+      "data_sources": []
+    },
+    {
+      "id": "weather",
+      "phrases": ["pogoda", "jaka pogoda", "jaka jest pogoda", "weather"],
+      "summary_template": "{summary}",
+      "data_sources": ["weather.json"]
+    },
+    {
+      "id": "route",
+      "phrases": ["trasa", "dojazd", "ile do", "droga do", "route", "korki"],
+      "summary_template": "{summary}",
+      "data_sources": ["route.json"]
+    },
+    {
+      "id": "volleyball",
+      "phrases": ["siatkówka", "siatkowka", "mecz", "mecze", "volleyball", "reprezentacja"],
+      "summary_template": "{summary}",
+      "data_sources": ["volleyball.json"]
+    },
+    {
+      "id": "focus",
+      "phrases": ["focus", "co teraz", "na czym się skupić", "plan", "co robimy"],
+      "summary_template": "{summary}",
+      "data_sources": ["current_focus.json"]
+    },
+    {
+      "id": "help",
+      "phrases": ["help", "pomoc", "co potrafisz", "komendy", "lista"],
+      "summary_template": "Rozumiem: status, godzina, pogoda, trasa, siatkówka, focus, tryb prywatny, tryb gość, tryb normalny, powtórz, pomoc.",
+      "data_sources": []
+    },
+    {
+      "id": "replay",
+      "phrases": ["powtórz", "powtorz", "jeszcze raz", "repeat"],
+      "summary_template": "{last}",
+      "data_sources": ["_last_summary"]
+    },
+    {
+      "id": "privacy_private",
+      "phrases": ["tryb prywatny", "tryb prywatny włącz", "włącz prywatny", "private mode on"],
+      "summary_template": "Tryb prywatny włączony.",
+      "set_privacy": "private",
+      "data_sources": []
+    },
+    {
+      "id": "privacy_normal",
+      "phrases": ["tryb normalny", "wyłącz prywatny", "tryb normalny włącz", "normal mode on"],
+      "summary_template": "Tryb normalny włączony.",
+      "set_privacy": "normal",
+      "data_sources": []
+    },
+    {
+      "id": "privacy_guest",
+      "phrases": ["tryb gość", "tryb gosc", "włącz gość", "tryb gość włącz", "guest mode on"],
+      "summary_template": "Tryb gość włączony.",
+      "set_privacy": "guest",
+      "data_sources": []
+    }
+  ]
+}

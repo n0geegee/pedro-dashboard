@@ -77,27 +77,49 @@ check_once() {
   fi
   if [[ "$health_ok" == "1" ]]; then
     pedro_log "watchdog-dashboard.sh: health ok, nothing to do"
-    return 0
-  fi
-
-  pedro_log "watchdog-dashboard.sh: health not ok; attempting restart"
-  if (( $(restart_in_window) >= MAX_RESTART_PER_HOUR )); then
-    pedro_log "watchdog-dashboard.sh: hit MAX_RESTART_PER_HOUR=$MAX_RESTART_PER_HOUR; backing off"
-    return 0
-  fi
-
-  record_restart
-  if "$SCRIPT_DIR/start-dashboard.sh" >>"$PEDRO_WATCHDOG_LOG_FILE" 2>&1; then
-    pedro_log "watchdog-dashboard.sh: restart succeeded"
   else
-    pedro_log "watchdog-dashboard.sh: restart returned non-zero"
+    pedro_log "watchdog-dashboard.sh: health not ok; attempting restart"
+    if (( $(restart_in_window) >= MAX_RESTART_PER_HOUR )); then
+      pedro_log "watchdog-dashboard.sh: hit MAX_RESTART_PER_HOUR=$MAX_RESTART_PER_HOUR; backing off"
+    else
+      record_restart
+      if "$SCRIPT_DIR/start-dashboard.sh" >>"$PEDRO_WATCHDOG_LOG_FILE" 2>&1; then
+        pedro_log "watchdog-dashboard.sh: restart succeeded"
+      else
+        pedro_log "watchdog-dashboard.sh: restart returned non-zero"
+      fi
+    fi
+
+    # Optional kiosk recovery: only if the dashboard is now healthy AND
+    # DISPLAY is up. We do NOT kill or relaunch Chrome when DISPLAY is
+    # unreachable — kiosk is a desktop-session concern, not the watchdog's.
+    if [[ "$(pedro_http_health "$PEDRO_HEALTH_URL" 2)" == "1" ]] && [[ "$(pedro_display_works)" == "1" ]]; then
+      "$SCRIPT_DIR/start-kiosk.sh" >>"$PEDRO_WATCHDOG_LOG_FILE" 2>&1 || true
+    fi
   fi
 
-  # Optional kiosk recovery: only if the dashboard is now healthy AND
-  # DISPLAY is up. We do NOT kill or relaunch Chrome when DISPLAY is
-  # unreachable — kiosk is a desktop-session concern, not the watchdog's.
-  if [[ "$(pedro_http_health "$PEDRO_HEALTH_URL" 2)" == "1" ]] && [[ "$(pedro_display_works)" == "1" ]]; then
-    "$SCRIPT_DIR/start-kiosk.sh" >>"$PEDRO_WATCHDOG_LOG_FILE" 2>&1 || true
+  # Voice daemon (v1.2). The voice subsystem is independent of the
+  # dashboard HTTP health: the dashboard can be up while the voice
+  # daemon is dead. We restart it here with the same hourly budget.
+  # The voice daemon needs DISPLAY (it polls the X keyboard), so we
+  # only attempt a restart when the display works.
+  if [[ -x "${PEDRO_VOICE_PY_BIN:-/nonexistent}" ]] && [[ -f "$SCRIPT_DIR/start-voice-daemon.sh" ]]; then
+    if [[ "$(pedro_voice_daemon_alive)" != "1" ]]; then
+      if [[ "$(pedro_display_works)" == "1" ]]; then
+        if (( $(restart_in_window) >= MAX_RESTART_PER_HOUR )); then
+          pedro_log "watchdog-dashboard.sh: voice restart budget exhausted; skipping"
+        else
+          record_restart
+          if "$SCRIPT_DIR/start-voice-daemon.sh" >>"$PEDRO_WATCHDOG_LOG_FILE" 2>&1; then
+            pedro_log "watchdog-dashboard.sh: voice daemon restart succeeded"
+          else
+            pedro_log "watchdog-dashboard.sh: voice daemon restart returned non-zero"
+          fi
+        fi
+      else
+        pedro_log "watchdog-dashboard.sh: voice daemon dead but DISPLAY down; skipping"
+      fi
+    fi
   fi
   return 0
 }

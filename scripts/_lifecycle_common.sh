@@ -58,6 +58,16 @@ PEDRO_XDG_AUTOSTART_DIR="${PEDRO_XDG_AUTOSTART_DIR:-$PEDRO_HOME/.config/autostar
 PEDRO_AUTOSTART_SERVER_FILE="${PEDRO_AUTOSTART_SERVER_FILE:-$PEDRO_XDG_AUTOSTART_DIR/pedro-dashboard-server.desktop}"
 PEDRO_AUTOSTART_KIOSK_FILE="${PEDRO_AUTOSTART_KIOSK_FILE:-$PEDRO_XDG_AUTOSTART_DIR/pedro-dashboard-kiosk.desktop}"
 
+# Voice subsystem (v1.2 push-to-talk "hey pedro")
+PEDRO_VOICE_PY_BIN="${PEDRO_VOICE_PY_BIN:-$HOME/.local/share/pedro-voice-venv/bin/python}"
+PEDRO_VOICE_DAEMON_SCRIPT="${PEDRO_VOICE_DAEMON_SCRIPT:-$PEDRO_PROJECT_ROOT/scripts/pedro_voice_daemon.py}"
+PEDRO_VOICE_DAEMON_PID_FILE="${PEDRO_VOICE_DAEMON_PID_FILE:-$PEDRO_RUN_DIR/voice_daemon.pid}"
+PEDRO_VOICE_DAEMON_LOG_FILE="${PEDRO_VOICE_DAEMON_LOG_FILE:-$PEDRO_LOG_DIR/voice_daemon.log}"
+PEDRO_VOICE_TRIGGER_KEYCODE="${PEDRO_VOICE_TRIGGER_KEYCODE:-65}"  # Space
+PEDRO_MIC_DEVICE="${PEDRO_MIC_DEVICE:-plughw:0,0}"
+PEDRO_PRIVACY_FILE="${PEDRO_PRIVACY_FILE:-$PEDRO_STATE_DIR/privacy_mode}"
+PEDRO_AUTOSTART_VOICE_FILE="${PEDRO_AUTOSTART_VOICE_FILE:-$PEDRO_XDG_AUTOSTART_DIR/pedro-voice-daemon.desktop}"
+
 # --- helpers --------------------------------------------------------------
 
 pedro_log_ts() {
@@ -158,6 +168,33 @@ pedro_http_health() {
   local code
   code="$(curl -fsS -o /dev/null -w '%{http_code}' --max-time "$timeout_s" "$url" 2>/dev/null || echo 000)"
   if [[ "$code" == "200" ]]; then
+    echo 1
+  else
+    echo 0
+  fi
+}
+
+pedro_voice_daemon_alive() {
+  # Echo "1" if the voice daemon PID file exists and points to a live
+  # process, "0" otherwise. Mirrors pedro_pid_alive but specialised
+  # for the voice subsystem (we want the helper name to read well in
+  # watchdog and start scripts).
+  local pidfile="${PEDRO_VOICE_DAEMON_PID_FILE:-}"
+  if [[ -z "$pidfile" ]]; then
+    echo 0
+    return 0
+  fi
+  if [[ ! -f "$pidfile" ]]; then
+    echo 0
+    return 0
+  fi
+  local pid
+  pid="$(tr -d '[:space:]' < "$pidfile" 2>/dev/null || true)"
+  if ! [[ "$pid" =~ ^[0-9]+$ ]]; then
+    echo 0
+    return 0
+  fi
+  if kill -0 "$pid" 2>/dev/null; then
     echo 1
   else
     echo 0

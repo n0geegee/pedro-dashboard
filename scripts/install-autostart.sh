@@ -79,11 +79,25 @@ X-GNOME-Autostart-enabled=true
 EOF
 )
 
-# Crontab fallback: @reboot for the server/refresher, */2 minutes for the watchdog.
+VOICE_DESKTOP_CONTENT=$(cat <<EOF
+[Desktop Entry]
+Type=Application
+Name=Pedro voice daemon
+Comment=Pedro voice push-to-talk "hey pedro" daemon (X11 keyboard polling)
+Exec=$SCRIPT_DIR/start-voice-daemon.sh
+Icon=audio-input-microphone
+Terminal=false
+Categories=Network;Audio;
+X-GNOME-Autostart-enabled=true
+EOF
+)
+
+# Crontab fallback: @reboot for the server/refresher/voice, */2 minutes for the watchdog.
 PROPOSED_CRON=$(cat <<EOF
 # Pedro Dashboard — no-systemd fallback. Edit/delete as you like.
 @reboot $SCRIPT_DIR/start-dashboard.sh >> $PEDRO_WATCHDOG_LOG_FILE 2>&1
 @reboot $SCRIPT_DIR/state-refresher.sh --start >> $PEDRO_WATCHDOG_LOG_FILE 2>&1
+@reboot $SCRIPT_DIR/start-voice-daemon.sh >> $PEDRO_WATCHDOG_LOG_FILE 2>&1
 */2 * * * * $SCRIPT_DIR/watchdog-dashboard.sh --once >> $PEDRO_WATCHDOG_LOG_FILE 2>&1
 EOF
 )
@@ -91,15 +105,16 @@ EOF
 mkdir -p "$PEDRO_XDG_AUTOSTART_DIR" 2>/dev/null || true
 
 if [[ "$ACTION" == "uninstall" ]]; then
-  rm -f "$PEDRO_AUTOSTART_SERVER_FILE" "$REFRESHER_DESKTOP_FILE" "$PEDRO_AUTOSTART_KIOSK_FILE" 2>/dev/null || true
+  rm -f "$PEDRO_AUTOSTART_SERVER_FILE" "$REFRESHER_DESKTOP_FILE" "$PEDRO_AUTOSTART_KIOSK_FILE" "$PEDRO_AUTOSTART_VOICE_FILE" 2>/dev/null || true
   echo "removed: $PEDRO_AUTOSTART_SERVER_FILE"
   echo "removed: $REFRESHER_DESKTOP_FILE"
   echo "removed: $PEDRO_AUTOSTART_KIOSK_FILE"
+  echo "removed: $PEDRO_AUTOSTART_VOICE_FILE"
   if command -v crontab >/dev/null 2>&1; then
     # Filter out our entries, leave the operator's other crontab alone.
     existing="$(crontab -l 2>/dev/null || true)"
     if [[ -n "$existing" ]]; then
-      filtered="$(printf '%s\n' "$existing" | grep -v -F "Pedro Dashboard" | grep -v -F "$SCRIPT_DIR/start-dashboard.sh" | grep -v -F "$SCRIPT_DIR/state-refresher.sh" | grep -v -F "$SCRIPT_DIR/watchdog-dashboard.sh" || true)"
+      filtered="$(printf '%s\n' "$existing" | grep -v -F "Pedro Dashboard" | grep -v -F "$SCRIPT_DIR/start-dashboard.sh" | grep -v -F "$SCRIPT_DIR/state-refresher.sh" | grep -v -F "$SCRIPT_DIR/start-voice-daemon.sh" | grep -v -F "$SCRIPT_DIR/watchdog-dashboard.sh" || true)"
       printf '%s\n' "$filtered" | crontab - 2>/dev/null || true
       echo "removed Pedro Dashboard crontab entries (other entries preserved)"
     fi
@@ -118,6 +133,9 @@ echo "$REFRESHER_DESKTOP_CONTENT"
 echo
 echo "--- $PEDRO_AUTOSTART_KIOSK_FILE ---"
 echo "$KIOSK_DESKTOP_CONTENT"
+echo
+echo "--- $PEDRO_AUTOSTART_VOICE_FILE ---"
+echo "$VOICE_DESKTOP_CONTENT"
 echo
 
 if [[ "$PRINT_ONLY" == "1" ]]; then
@@ -140,7 +158,11 @@ printf '%s\n' "$KIOSK_DESKTOP_CONTENT" > "$PEDRO_AUTOSTART_KIOSK_FILE" || {
   echo "ERROR: failed to write $PEDRO_AUTOSTART_KIOSK_FILE" >&2
   exit 1
 }
-chmod 0644 "$PEDRO_AUTOSTART_SERVER_FILE" "$REFRESHER_DESKTOP_FILE" "$PEDRO_AUTOSTART_KIOSK_FILE" 2>/dev/null || true
+printf '%s\n' "$VOICE_DESKTOP_CONTENT" > "$PEDRO_AUTOSTART_VOICE_FILE" || {
+  echo "ERROR: failed to write $PEDRO_AUTOSTART_VOICE_FILE" >&2
+  exit 1
+}
+chmod 0644 "$PEDRO_AUTOSTART_SERVER_FILE" "$REFRESHER_DESKTOP_FILE" "$PEDRO_AUTOSTART_KIOSK_FILE" "$PEDRO_AUTOSTART_VOICE_FILE" 2>/dev/null || true
 
 # Log the install.
 {
@@ -148,11 +170,13 @@ chmod 0644 "$PEDRO_AUTOSTART_SERVER_FILE" "$REFRESHER_DESKTOP_FILE" "$PEDRO_AUTO
   echo "wrote: $PEDRO_AUTOSTART_SERVER_FILE"
   echo "wrote: $REFRESHER_DESKTOP_FILE"
   echo "wrote: $PEDRO_AUTOSTART_KIOSK_FILE"
+  echo "wrote: $PEDRO_AUTOSTART_VOICE_FILE"
 } >> "$PEDRO_AUTOSTART_LOG_FILE" 2>/dev/null || true
 
 echo "wrote: $PEDRO_AUTOSTART_SERVER_FILE"
 echo "wrote: $REFRESHER_DESKTOP_FILE"
 echo "wrote: $PEDRO_AUTOSTART_KIOSK_FILE"
+echo "wrote: $PEDRO_AUTOSTART_VOICE_FILE"
 
 echo
 echo "== Proposed crontab fallback (NOT applied) =="
@@ -180,7 +204,7 @@ fi
 
 existing="$(crontab -l 2>/dev/null || true)"
 # De-duplicate our previous block before appending the current proposal.
-filtered="$(printf '%s\n' "$existing" | grep -v -F "Pedro Dashboard" | grep -v -F "$SCRIPT_DIR/start-dashboard.sh" | grep -v -F "$SCRIPT_DIR/state-refresher.sh" | grep -v -F "$SCRIPT_DIR/watchdog-dashboard.sh" || true)"
+filtered="$(printf '%s\n' "$existing" | grep -v -F "Pedro Dashboard" | grep -v -F "$SCRIPT_DIR/start-dashboard.sh" | grep -v -F "$SCRIPT_DIR/state-refresher.sh" | grep -v -F "$SCRIPT_DIR/start-voice-daemon.sh" | grep -v -F "$SCRIPT_DIR/watchdog-dashboard.sh" || true)"
 {
   if [[ -n "$filtered" ]]; then
     printf '%s\n' "$filtered"
