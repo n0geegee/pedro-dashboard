@@ -106,6 +106,39 @@ body[data-skin="oracle"] {
   --skin-edge-url: none;
   --skin-edge-opacity: 0;
   --skin-edge-blend: normal;
+
+  /* Match-day flag — let the PL gradient show through, keep gradient body-bg as fallback */
+  background: transparent;
+  position: relative;
+}
+
+body[data-skin="oracle"]::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    to bottom,
+    #ffffff 0% 50%,
+    #dc1414 50% 100%
+  );
+}
+
+body[data-skin="oracle"]::after {
+  content: "";
+  position: fixed;
+  left: 0; right: 0; top: 50%;
+  height: 1px;
+  z-index: 0;
+  pointer-events: none;
+  background: rgba(0, 0, 0, 0.18);
+}
+
+body[data-skin="oracle"] .layout,
+body[data-skin="oracle"] .ticker {
+  position: relative;
+  z-index: 1;
 }
 
 body[data-skin="oracle"] {
