@@ -33,15 +33,14 @@ RECENT_RESULTS = [
     {"group": "men", "date": "2026-06-12", "time": "14:00", "home": ("Polska", "pl"), "away": ("Japonia", "jp"), "home_sets": 2, "away_sets": 3, "competition": "VNL 2026", "location": "Linyi (CHN)"},
     {"group": "men", "date": "2026-06-11", "time": "14:00", "home": ("Polska", "pl"), "away": ("Słowenia", "si"), "home_sets": 2, "away_sets": 3, "competition": "VNL 2026", "location": "Linyi (CHN)"},
 
-    # Women — VNL 2026, Nanjing. Last three completed Poland matches as of 2026-06-15.
+    # Women — VNL 2026, Nanjing + Bangkok. Last three completed Poland matches as of 2026-06-17.
+    {"group": "women", "date": "2026-06-17", "time": "12:00", "home": ("Polska", "pl"), "away": ("Bułgaria", "bg"), "home_sets": 3, "away_sets": 0, "competition": "VNL 2026", "location": "Bangkok (THA)"},
     {"group": "women", "date": "2026-06-07", "time": "13:00", "home": ("Polska", "pl"), "away": ("Chiny", "cn"), "home_sets": 1, "away_sets": 3, "competition": "VNL 2026", "location": "Nankin (CHN)"},
     {"group": "women", "date": "2026-06-05", "time": "13:30", "home": ("Polska", "pl"), "away": ("Serbia", "rs"), "home_sets": 3, "away_sets": 2, "competition": "VNL 2026", "location": "Nankin (CHN)"},
-    {"group": "women", "date": "2026-06-04", "time": "09:00", "home": ("Polska", "pl"), "away": ("Czechy", "cz"), "home_sets": 3, "away_sets": 0, "competition": "VNL 2026", "location": "Nankin (CHN)"},
 ]
 
 SCHEDULE = [
     # Women — VNL 2026, Bangkok + Osaka
-    {"group": "women", "date": "2026-06-17", "time": "12:00", "home": ("Polska", "pl"), "away": ("Bułgaria", "bg"), "competition": "VNL 2026", "location": "Bangkok (THA)"},
     {"group": "women", "date": "2026-06-18", "time": "12:00", "home": ("Polska", "pl"), "away": ("Ukraina", "ua"), "competition": "VNL 2026", "location": "Bangkok (THA)"},
     {"group": "women", "date": "2026-06-20", "time": "12:00", "home": ("Polska", "pl"), "away": ("Holandia", "nl"), "competition": "VNL 2026", "location": "Bangkok (THA)"},
     {"group": "women", "date": "2026-06-21", "time": "12:00", "home": ("Polska", "pl"), "away": ("Kanada", "ca"), "competition": "VNL 2026", "location": "Bangkok (THA)"},
@@ -139,7 +138,7 @@ def main() -> int:
             "source_mode": "curated_source_backed",
             "sources": SOURCES,
             "note": "Terminarz i ostatnie wyniki VNL 2026 filtrowane do widoku dashboardu; aktualizować ręcznie, gdy źródła zmienią godziny lub wyniki.",
-            "last_source_review": "2026-06-15",
+            "last_source_review": "2026-06-17",
         },
     )
     atomic_write(state_dir / "volleyball.json", volleyball)
