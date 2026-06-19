@@ -98,11 +98,11 @@ check_once() {
     fi
   fi
 
-  # Voice daemon (v1.2). The voice subsystem is independent of the
-  # dashboard HTTP health: the dashboard can be up while the voice
-  # daemon is dead. We restart it here with the same hourly budget.
-  # The voice daemon needs DISPLAY (it polls the X keyboard), so we
-  # only attempt a restart when the display works.
+  # Voice daemon (v1.2 push-to-talk, legacy). The voice subsystem is
+  # independent of the dashboard HTTP health: the dashboard can be up
+  # while the voice daemon is dead. We restart it here with the same
+  # hourly budget. The v1.2 daemon needs DISPLAY (it polls the X
+  # keyboard), so we only attempt a restart when the display works.
   if [[ -x "${PEDRO_VOICE_PY_BIN:-/nonexistent}" ]] && [[ -f "$SCRIPT_DIR/start-voice-daemon.sh" ]]; then
     if [[ "$(pedro_voice_daemon_alive)" != "1" ]]; then
       if [[ "$(pedro_display_works)" == "1" ]]; then
@@ -118,6 +118,28 @@ check_once() {
         fi
       else
         pedro_log "watchdog-dashboard.sh: voice daemon dead but DISPLAY down; skipping"
+      fi
+    fi
+  fi
+
+  # Voice KWS daemon (v1.4 always-listening "hey pedro"). Replaces v1.3
+  # push-to-talk on the iMac (no keyboard). The KWS daemon does not
+  # need DISPLAY (it reads ALSA mic + writes state file only), so we
+  # restart it whenever it is dead, regardless of display state. If
+  # the v1.3 push-to-talk daemon is also running, the KWS daemon
+  # takes precedence because it writes the voice_daemon.pid alias
+  # and the refresher will treat the KWS daemon as the canonical owner.
+  if [[ -x "${PEDRO_VOICE_PY_BIN:-/nonexistent}" ]] && [[ -f "$SCRIPT_DIR/start-voice-kws.sh" ]]; then
+    if [[ "$(pedro_voice_kws_alive)" != "1" ]]; then
+      if (( $(restart_in_window) >= MAX_RESTART_PER_HOUR )); then
+        pedro_log "watchdog-dashboard.sh: voice kws restart budget exhausted; skipping"
+      else
+        record_restart
+        if "$SCRIPT_DIR/start-voice-kws.sh" >>"$PEDRO_WATCHDOG_LOG_FILE" 2>&1; then
+          pedro_log "watchdog-dashboard.sh: voice kws restart succeeded"
+        else
+          pedro_log "watchdog-dashboard.sh: voice kws restart returned non-zero"
+        fi
       fi
     fi
   fi

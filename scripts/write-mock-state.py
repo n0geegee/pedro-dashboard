@@ -491,16 +491,10 @@ WIDGETS = {
     "current_focus.json": widget_current_focus,
     "alerts.json": widget_alerts,
     "decisions.json": widget_decisions,
-    "voice_console.json": lambda: widget_voice_console("idle"),
-    # Live-owned widgets are written by refresh-*.py connectors below, not by
-    # mock baseline. Keeping them out of the baseline prevents visible races
-    # where the 20s refresher briefly shows stale mock values before live probes
-    # overwrite them again.
-    # - weather.json -> refresh-weather-status.py
-    # - route.json -> refresh-route-status.py
-    # - calendar.json -> refresh-kamila-calendar.py
-    # - volleyball.json -> refresh-match-calendar.py
-    # - media.json slideshow -> refresh-photos-slideshow.py
+    # voice_console.json is owned by scripts/pedro_voice_kws.py (live KWS
+    # daemon, v1.4 — replaces v1.3 push-to-talk). Removed from the mock
+    # baseline to stop the 20s state refresher from repainting it as
+    # mode=mock every cycle and erasing the KWS partials / wake state.
     "ll_tbd.json": widget_ll_tbd,
 }
 
