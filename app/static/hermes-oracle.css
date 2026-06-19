@@ -567,3 +567,25 @@ body[data-skin="oracle"][data-pl-matchday="1"]::before,
 body[data-skin="oracle"][data-pl-matchday="1"]::after {
   z-index: 2;
 }
+
+/* v1.4.6 — make the PL flag actually visible. Solid background on body,
+   semi-transparent card backs so the flag reads through the dashboard. */
+body[data-skin="oracle"][data-pl-matchday="1"] {
+  background: linear-gradient(
+    to bottom,
+    #ffffff 0% 50%,
+    #dc1414 50% 100%
+  ) !important;
+  background-attachment: fixed !important;
+}
+body[data-skin="oracle"][data-pl-matchday="1"]::before,
+body[data-skin="oracle"][data-pl-matchday="1"]::after { display: none !important; }
+body[data-skin="oracle"][data-pl-matchday="1"] .card {
+  background: rgba(10, 14, 22, 0.55) !important;
+  border-color: rgba(255, 255, 255, 0.18) !important;
+}
+body[data-skin="oracle"][data-pl-matchday="1"] .card--slideshow,
+body[data-skin="oracle"][data-pl-matchday="1"] .card--video,
+body[data-skin="oracle"][data-pl-matchday="1"] .card--alerts {
+  background: rgba(10, 14, 22, 0.65) !important;
+}
