@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import random
 import re
 import time
 import urllib.request
@@ -162,12 +163,22 @@ def cache_album(album_url: str, cache_dir: Path, manifest_path: Path, max_images
     images = [x for x in images if x.get("public_url")]
     if not images:
         raise RuntimeError("no_images_cached")
+
+    # Randomize the slideshow queue once per album refresh. The dashboard still
+    # advances one slot at a time (no repeats until the shuffled queue wraps),
+    # but the order is no longer Google Photos / filename order. Do not shuffle
+    # on every probe run: that would make `current` point at a moving target and
+    # look like skips. A new random queue is created only when the manifest is
+    # refreshed/rebuilt.
+    random.SystemRandom().shuffle(images)
+
     manifest = {
         "album_url": album_url,
         "album": DEFAULT_ALBUM_TITLE,
         "updated_at": now_iso(),
         "count": len(images),
         "downloaded": downloaded,
+        "order": "random_shuffle_no_repeats_until_wrap",
         "images": images,
     }
     atomic_write(manifest_path, manifest)
