@@ -202,6 +202,59 @@ def _read_json(path: Path) -> Tuple[bool, Any, str]:
     return True, data, None
 
 
+def _load_minimax_usage() -> Dict[str, Any]:
+    """Load MiniMax token-usage JSON from the agent.log sniffer.
+    Returns a compact envelope: 5h window + all-time + last-session.
+    Standalone endpoint only — not exposed via /api/state widgets, so the
+    kiosk UI is unaffected. Use /api/minimax_usage to read.
+    """
+    path = Path("/home/imac-hermes/.local/state/hermes/minimax-usage.json")
+    if not path.exists():
+        return {
+            "status": "empty",
+            "updated_at": None,
+            "data": {
+                "five_h_in": 0, "five_h_out": 0, "five_h_request_count": 0,
+                "all_time_in": 0, "all_time_out": 0, "all_time_request_count": 0,
+                "all_time_session_count": 0,
+                "sessions": [],
+            },
+        }
+    try:
+        raw = json.loads(path.read_text())
+    except Exception as exc:
+        return {"status": "error", "error": f"parse:{exc}", "data": {}}
+    sessions = raw.get("sessions", {})
+    top_items = sorted(sessions.items(), key=lambda kv: kv[1].get("last_seen", 0), reverse=True)[:5]
+    return {
+        "status": "ok",
+        "updated_at": raw.get("updated_at"),
+        "data": {
+            "five_h_in": raw.get("five_h_in", 0),
+            "five_h_out": raw.get("five_h_out", 0),
+            "five_h_request_count": raw.get("five_h_request_count", 0),
+            "five_h_window_first": raw.get("five_h_window_first", 0),
+            "all_time_in": raw.get("all_time_in", 0),
+            "all_time_out": raw.get("all_time_out", 0),
+            "all_time_cache_read": raw.get("all_time_cache_read", 0),
+            "all_time_request_count": raw.get("all_time_request_count", 0),
+            "all_time_session_count": raw.get("all_time_session_count", 0),
+            "last_sessions": [
+                {
+                    "id": sid[:26],
+                    "request_count": s.get("request_count", 0),
+                    "in_total": s.get("in_total", 0),
+                    "out_total": s.get("out_total", 0),
+                    "last_in": s.get("last_in", 0),
+                    "last_cache_pct": s.get("last_cache_pct", 0),
+                    "last_seen": s.get("last_seen", 0),
+                }
+                for sid, s in top_items
+            ],
+        },
+    }
+
+
 def load_widget(name: str) -> Dict[str, Any]:
     """Load a single widget state, normalizing to the envelope contract.
 
@@ -352,6 +405,9 @@ class PedroHandler(BaseHTTPRequestHandler):
                 return
             if path == "/api/voice_console":
                 self._send_json(HTTPStatus.OK, load_widget("voice_console"), send_body=send_body)
+                return
+            if path == "/api/minimax_usage":
+                self._send_json(HTTPStatus.OK, _load_minimax_usage(), send_body=send_body)
                 return
             if path.startswith("/static/"):
                 rel = path[len("/static/"):]
