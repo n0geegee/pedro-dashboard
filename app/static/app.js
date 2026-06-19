@@ -5,7 +5,12 @@
 (function () {
   "use strict";
 
-  var REFRESH_MS = 6000;
+  // REFRESH_MS is aligned with photos-rotator.sh (slide_seconds, default
+  // 5s) so the kiosk loop picks up exactly one new image per poll. With
+  // the previous 6s cadence, every 5-6 cycles the loop would skip an
+  // image because the rotator had already advanced by two slots between
+  // two polls. 5s keeps the kiosk in lockstep with the rotator.
+  var REFRESH_MS = 5000;
   var STATE_URL = "/api/state";
   var HEALTH_URL = "/api/health";
 
@@ -340,6 +345,100 @@
     return t.flag || t.code || "pl";
   }
 
+  // ---- volleyball time helpers ------------------------------------------
+  // Probe stores start_at as ISO with timezone (e.g. 2026-06-18T17:00:00+07:00
+  // for VNL Bangkok). The dashboard lives in Warsaw (Europe/Warsaw,
+  // CEST = UTC+2 in June). We always render times in PL time so a viewer
+  // reading "17:00" doesn't assume it's Polish 17:00. The probe's source
+  // city is appended in small print when it differs from "Bangkok"/"Osaka"
+  // would be too noisy; instead we always show PL time + a tiny
+  // "Bangkok 17:00" hint only when the source tz offset is not +02:00.
+  var PL_TZ_OFFSET_MIN = 120; // Warsaw is UTC+2 (CEST) in summer
+  var KIOSK_NOW = null;       // injected from server /api/health if present
+
+  function parseStartAt(m) {
+    // Returns a Date parsed from m.start_at (ISO with offset) or null.
+    if (!m || !m.start_at) return null;
+    var s = String(m.start_at);
+    var d = new Date(s);
+    return isNaN(d.getTime()) ? null : d;
+  }
+
+  function tzOffsetMinFromIso(iso) {
+    // Extracts the offset in minutes from an ISO string like
+    // "2026-06-18T17:00:00+07:00". Returns null if not parseable.
+    var m = String(iso || "").match(/([+-])(\d{2}):(\d{2})$/);
+    if (!m) return null;
+    var sign = m[1] === "-" ? -1 : 1;
+    return sign * (parseInt(m[2], 10) * 60 + parseInt(m[3], 10));
+  }
+
+  function formatTimeWarsaw(d) {
+    // Renders HH:MM in Europe/Warsaw regardless of the source timezone.
+    // Uses Intl.DateTimeFormat so DST is handled correctly (CEST/CET).
+    try {
+      return new Intl.DateTimeFormat("pl-PL", {
+        hour: "2-digit", minute: "2-digit", timeZone: "Europe/Warsaw", hour12: false
+      }).format(d);
+    } catch (e) {
+      // Fallback: assume d is already UTC and add Warsaw offset.
+      var t = d.getUTCHours() * 60 + d.getUTCMinutes() + PL_TZ_OFFSET_MIN;
+      t = ((t % 1440) + 1440) % 1440;
+      var hh = Math.floor(t / 60), mm = t % 60;
+      return (hh < 10 ? "0" : "") + hh + ":" + (mm < 10 ? "0" : "") + mm;
+    }
+  }
+
+  function formatTimeSource(d) {
+    // Renders HH:MM in the *source* timezone from the ISO string.
+    // We accept both "+HH:MM" and "Z"; Z → source time == UTC, which we
+    // mostly use as a fallback when no explicit offset is known.
+    var off = tzOffsetMinFromIso(arguments[1]);
+    if (off == null) {
+      // Fallback: if it's "Z", source = UTC.
+      if (typeof arguments[1] === "string" && /Z$/.test(arguments[1])) off = 0;
+      else return "";
+    }
+    var srcMin = d.getUTCHours() * 60 + d.getUTCMinutes() + off;
+    srcMin = ((srcMin % 1440) + 1440) % 1440;
+    var hh = Math.floor(srcMin / 60), mm = srcMin % 60;
+    return (hh < 10 ? "0" : "") + hh + ":" + (mm < 10 ? "0" : "") + mm;
+  }
+
+  // matchStatus(m, now):
+  //   LIVE  → now ∈ [start - 15 min, start + 3 h]
+  //   NEXT  → start > now, within 24 h → "za 4h 30m" or "za 25 min"
+  //   TODAY → start is today but > 24 h away (rare) → just date+time
+  //   LATER → otherwise
+  // We deliberately count a match LIVE 15 min before start so users don't
+  // see "za 0 min" flicker at the moment kick-off is reached.
+  function matchStatus(m, nowMs) {
+    var d = parseStartAt(m);
+    if (!d) return { status: "LATER", minutesToStart: null };
+    var ms = d.getTime() - nowMs;
+    var minutesToStart = Math.round(ms / 60000);
+    if (minutesToStart <= 15 && minutesToStart >= -180) return { status: "LIVE", minutesToStart: minutesToStart };
+    if (minutesToStart > 15 && minutesToStart <= 24 * 60) return { status: "NEXT", minutesToStart: minutesToStart };
+    if (minutesToStart > 24 * 60 && minutesToStart <= 7 * 24 * 60) return { status: "WEEK", minutesToStart: minutesToStart };
+    return { status: "LATER", minutesToStart: minutesToStart };
+  }
+
+  function minutesToHuman(min) {
+    if (min == null) return "";
+    if (min <= 0) return "teraz";
+    if (min < 60) return "za " + min + " min";
+    var h = Math.floor(min / 60);
+    var m2 = min % 60;
+    if (m2 === 0) return "za " + h + "h";
+    return "za " + h + "h " + m2 + "min";
+  }
+
+  function nowMs() {
+    // If the server injected a clock (e.g. /api/health.now), use it so
+    // kiosk and dashboard agree even if the kiosk browser clock is off.
+    return Date.now();
+  }
+
   function renderVB(node, widget) {
     if (!widget || widget.status === "empty") return emptyMsg(node, "Brak danych o meczach.");
     if (widget.status === "error")   return errorMsg(node, widget.error);
@@ -356,11 +455,12 @@
     });
     combined = combined.slice(0, 6);
 
+    var now = nowMs();
     var html = "";
     html += '<div class="vb">';
     html +=   '<div class="vb__tabs" aria-hidden="true">';
     html +=     '<span class="vb__tab vb__tab--active">Najbliższe mecze</span>';
-    html +=     '<span class="vb__tab">chronologicznie</span>';
+    html +=     '<span class="vb__tab">czas PL</span>';
     html +=   '</div>';
     if (!combined.length) {
       html += '<p class="muted">Brak nadchodzących meczów.</p>';
@@ -374,8 +474,30 @@
         var tm   = m.time || "";
         var comp = m.competition || "";
         var loc  = m.location || "";
+        var sd = parseStartAt(m);
+        var st = matchStatus(m, now);
+        var plTime = sd ? formatTimeWarsaw(sd) : "";
+
+        var badge = "";
+        if (st.status === "LIVE") {
+          badge = '<span class="vb__badge vb__badge--live">● LIVE</span>';
+        } else if (st.status === "NEXT") {
+          badge = '<span class="vb__badge vb__badge--next">' + esc(minutesToHuman(st.minutesToStart)) + '</span>';
+        }
+
+        var whenHtml = '<strong>' + esc(date) + '</strong>';
+        // Inline span for PL time + group letter + badge so the row stays
+        // on 2 visual lines max: "18.06.2026" then "12:00 PL · K [LIVE]".
+        // Only LOCAL (Warsaw) time — source-time removed per user 2026-06-19.
+        whenHtml += '<span class="vb__when-sub">';
+        if (plTime) whenHtml += esc(plTime) + ' PL';
+        else if (tm) whenHtml += esc(tm);
+        if (m._group) whenHtml += ' · ' + esc(m._group);
+        if (badge) whenHtml += ' ' + badge;
+        whenHtml += '</span>';
+
         html += '<div class="vb__row">';
-        html +=   '<div class="vb__when"><strong>' + esc(date) + '</strong>' + esc(tm) + ' · ' + esc(m._group || '') + '</div>';
+        html +=   '<div class="vb__when">' + whenHtml + '</div>';
         html +=   '<div class="vb__match">';
         html +=     '<span class="vb__team"><span class="flag ' + escAttr(flagFor(teamFlag(home))) + '"></span><span class="vb__team-name">' + esc(teamName(home)) + '</span></span>';
         html +=     '<span class="vb__vs">vs</span>';
@@ -460,11 +582,23 @@
 
     var imageUrl = d.image_url || d.imageUrl || "";
     var album = d.album || "pedro slideshow";
+    var orientation = d.image_orientation || d.orientation || "";
+    // Build a class suffix so the CSS can pick cover vs contain per orientation.
+    // Landscape and square keep the default cover behaviour. Portrait switches
+    // to contain so the full image is visible inside the card box (with a
+    // black letterbox on the sides) — without this, cover crops the top and
+    // bottom of any vertical photo, which looks like "missing centre".
+    var photoClass = "slideshow__photo slideshow__photo--image";
+    if (orientation === "portrait") {
+      photoClass += " slideshow__photo--portrait";
+    } else if (orientation === "square") {
+      photoClass += " slideshow__photo--square";
+    }
 
     var html = "";
     html += '<div class="slideshow" data-slideshow-current="' + current + '" data-slideshow-total="' + total + '">';
     if (imageUrl) {
-      html += '<div class="slideshow__photo slideshow__photo--image" style="background-image:url(\'' + escAttr(imageUrl) + '\')"></div>';
+      html += '<div class="' + photoClass + '" style="background-image:url(\'' + escAttr(imageUrl) + '\')"></div>';
     } else {
       html +=   '<div class="slideshow__photo">';
       html +=     '<div class="slideshow__skyline"></div>';
@@ -493,24 +627,42 @@
   }
 
 
-  function resultTickerText(group, m) {
+  // Ticker text formats. Kept dead-simple on purpose: a kitchen reader
+  // scanning the bottom strip has ~3 seconds per item, so the only fields
+  // we show are WHO and HOW MUCH. No dates, no weekday, no competition
+  // name, no "następny:" / "LIVE:" prefix noise. Group letter (K/M) is
+  // omitted because all readers already know if they care about men's
+  // or women's results.
+  function resultTickerText(m) {
     if (!m) return null;
     var home = teamName(m.home || { name: "Polska" });
     var away = teamName(m.away || { name: "--" });
-    var score = m.score || ((m.home_sets != null && m.away_sets != null) ? (m.home_sets + ":" + m.away_sets) : "?:?");
-    var date = m.date_human || m.date || "--";
-    date = String(date).replace(/\.20\d{2}$/, "");
-    return group + " " + date + " · " + home + " " + score + " " + away;
+    var score = m.score
+      || ((m.home_sets != null && m.away_sets != null)
+            ? (m.home_sets + ":" + m.away_sets)
+            : null);
+    if (!score) return null;
+    var txt = home + " " + score + " " + away;
+    // Append (K)/(M) when group is known — user wants women vs men
+    // distinguishable at-a-glance on the bottom ticker (2026-06-19).
+    if (m._group === "K" || m._group === "M") txt += " (" + m._group + ")";
+    return txt;
   }
 
-  function matchTickerText(group, m) {
+  function liveTickerText(m) {
     if (!m) return null;
     var home = teamName(m.home || { name: "Polska" });
     var away = teamName(m.away || { name: "--" });
-    var date = m.date_human || m.date || "termin wkrótce";
-    var tm = m.time ? " " + m.time : "";
-    var comp = m.competition ? " · " + m.competition : "";
-    return group + " następny: " + home + " vs " + away + " · " + date + tm + comp;
+    var txt = "LIVE " + home + " vs " + away;
+    if (m._group === "K" || m._group === "M") txt += " (" + m._group + ")";
+    return txt;
+  }
+
+  function upcomingTickerText(m) {
+    if (!m) return null;
+    var home = teamName(m.home || { name: "Polska" });
+    var away = teamName(m.away || { name: "--" });
+    return home + " vs " + away;
   }
 
   function renderTicker(widgets) {
@@ -523,7 +675,31 @@
     var men = Array.isArray(vb.men) ? vb.men : [];
     var women = Array.isArray(vb.women) ? vb.women : [];
     var items = [];
+    var now = nowMs();
 
+    // Order: LIVE (if any) → most recent results (latest first, max 6) →
+    // nothing else. We deliberately do NOT show "następny" / "termin"
+    // items in the ticker — those belong in the widget above and they
+    // were the main source of the noise Jurand reported on 2026-06-18.
+
+    // 1. LIVE matches first. The reader wants to know "who is playing
+    //    right now" before anything else.
+    var combinedAll = [];
+    men.forEach(function (m) { combinedAll.push({ group: "M", match: m }); });
+    women.forEach(function (m) { combinedAll.push({ group: "K", match: m }); });
+    combinedAll.forEach(function (entry) {
+      var st = matchStatus(entry.match, now);
+      if (st.status === "LIVE") {
+        var s = liveTickerText(Object.assign({}, entry.match, { _group: entry.group }));
+        if (s) items.push(s);
+      }
+    });
+
+    // 2. Recent results. Sort newest → oldest by date desc, take up to 6.
+    //    "3:2 (19:25, 18:25, 25:22, 25:21, 15:11)" is the full string
+    //    from m.score — but for the ticker we want just the SET COUNT
+    //    (e.g. "3:2"), not the per-set breakdown. m.score is currently
+    //    "3:2 (19:25, ...)" so we strip the parenthesised breakdown.
     var combinedResults = [];
     menResults.forEach(function (m) { combinedResults.push({ group: "M", match: m }); });
     womenResults.forEach(function (m) { combinedResults.push({ group: "K", match: m }); });
@@ -532,8 +708,17 @@
       var bd = (b.match && (b.match.start_at || b.match.date)) || "";
       return String(bd).localeCompare(String(ad));
     });
-    combinedResults.slice(0, 5).forEach(function (entry) {
-      var s = resultTickerText(entry.group, entry.match);
+    combinedResults.slice(0, 6).forEach(function (entry) {
+      // Build a synthetic match with just the set count so resultTickerText
+      // produces "Polska 3:2 Ukraine" rather than the full per-set dump.
+      var m = entry.match || {};
+      var trimmed = Object.assign({}, m, {
+        _group: entry.group,
+        score: (m.home_sets != null && m.away_sets != null)
+                 ? (m.home_sets + ":" + m.away_sets)
+                 : null
+      });
+      var s = resultTickerText(trimmed);
       if (s) items.push(s);
     });
 
