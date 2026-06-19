@@ -24,6 +24,16 @@ fi
 
 # Xfwm4 keeps a titlebar on Chrome app windows. Use client coordinates that put
 # the outer titlebar below the UR card header instead of covering the dashboard.
+#
+# Geometry precedence (highest first):
+#   1. PEDRO_POLSAT_{X,Y,W,H} exported in the calling environment
+#   2. ~/.config/pedro/polsat.env (user-resized geometry persisted by hand)
+#   3. OpenViking canonical defaults (PEDRO_DASHBOARD_OV_ORIENTATION_16/Polsat_overlay_st_2more)
+PEDRO_POLSAT_ENV="${PEDRO_POLSAT_ENV:-$HOME/.config/pedro/polsat.env}"
+if [[ -f "$PEDRO_POLSAT_ENV" ]]; then
+  # shellcheck disable=SC1090
+  source "$PEDRO_POLSAT_ENV"
+fi
 X="${PEDRO_POLSAT_X:-1183}"
 Y="${PEDRO_POLSAT_Y:-92}"
 W="${PEDRO_POLSAT_W:-706}"
@@ -49,8 +59,14 @@ position_polsat_window() {
   fi
 }
 
-# Avoid opening duplicates when the dedicated profile/window is already alive.
-if pgrep -af "pedro-polsat-profile|polsatboxgo.pl" >/dev/null 2>&1; then
+# Avoid opening duplicates when the dedicated Chrome profile/window is already alive.
+# Use ps filtering for Chrome/Chromium only; plain pgrep -af can falsely match
+# the operator shell when this script is launched over SSH.
+if ps -eo comm=,args= | awk -v profile="$PROFILE_DIR" -v url="$URL" '
+  $1 ~ /^(google-chrome|chrome|chromium|chromium-browser)$/ &&
+  (index($0, profile) || index($0, url)) { found=1 }
+  END { exit found ? 0 : 1 }
+'; then
   position_polsat_window
   echo "Polsat Box Go window/profile already running; positioned in UR"
   exit 0
