@@ -36,7 +36,7 @@ import re
 import sys
 import urllib.request
 import urllib.error
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -72,6 +72,37 @@ POOL_CITY = {
     "M_Pool_7": "Belgrad (SRB)",
     "M_Pool_8": "Hoffman Estates (USA)",
     "M_Pool_9": "Osaka (JPN)",       # PL third week men
+}
+
+
+# Pool → UTC offset (in hours) of the host venue's local time when the
+# match is played. Used to convert the Wikipedia "17:00" cell (which is
+# local match time) into a UTC instant the dashboard JS can compare to
+# `Date.now()` for "is this LIVE?". Summer offsets (DST-aware for hosts
+# that observe it). Values are deliberately hardcoded — a 1-hour error
+# here means a LIVE badge flickers on/off for an hour around the start.
+# Source for VNL 2026 venues: FIVB press releases.
+POOL_TZ_OFFSET_HOURS = {
+    # Women
+    "Pool_1":  -4,   # Quebec: EDT (UTC-4) in June
+    "Pool_2":  -3,   # Brasilia: BRT (UTC-3) year-round
+    "Pool_3":  +8,   # Nankin: CST (UTC+8) year-round
+    "Pool_4":  +3,   # Ankara: TRT (UTC+3) year-round
+    "Pool_5":  +8,   # Pasig/Manila: PST (UTC+8) year-round
+    "Pool_6":  +7,   # Bangkok: ICT (UTC+7) year-round
+    "Pool_7":  +2,   # Belgrade: CEST (UTC+2) in June
+    "Pool_8":  +8,   # Hong Kong: HKT (UTC+8) year-round
+    "Pool_9":  +9,   # Osaka: JST (UTC+9) year-round
+    # Men
+    "M_Pool_1": -4,   # Ottawa: EDT (UTC-4) in June
+    "M_Pool_2": -3,   # Brasilia: BRT (UTC-3)
+    "M_Pool_3": +8,   # Linyi: CST (UTC+8)
+    "M_Pool_4": +2,   # Orleans: CEST (UTC+2) in June
+    "M_Pool_5": +2,   # Gliwice: CEST (UTC+2) in June — same as Warsaw
+    "M_Pool_6": +2,   # Ljubljana: CEST (UTC+2) in June
+    "M_Pool_7": +2,   # Belgrade: CEST (UTC+2) in June
+    "M_Pool_8": -5,   # Hoffman Estates (Chicago): CDT (UTC-5) in June
+    "M_Pool_9": +9,   # Osaka: JST (UTC+9)
 }
 
 WOMEN_URL = (
@@ -226,7 +257,20 @@ def parse_matches_from_wikipedia(html: str, gender: str) -> list[dict]:
             time_m = re.match(r"(\d{1,2}):(\d{2})", time_raw)
             if time_m:
                 dt = dt.replace(hour=int(time_m.group(1)), minute=int(time_m.group(2)))
-            dt_warsaw = dt.replace(tzinfo=TZ)
+            # The Wikipedia cell "17:00" is in the host venue's local time.
+            # Convert to UTC so the dashboard JS sees an absolute instant
+            # regardless of where the probe server runs. We use the
+            # pool's offset (POOL_TZ_OFFSET_HOURS, summer-adjusted), NOT
+            # Warsaw — assigning TZ=Warsaw to a Bangkok time would yield
+            # a wall-clock-true but instant-wrong result.
+            src_off = POOL_TZ_OFFSET_HOURS.get(prefix + pool_name, 0)
+            # Build a UTC-aware datetime. The Wikipedia cell is in host
+            # local time (e.g. "17:00" for Bangkok = UTC+7). Convert by
+            # subtracting the offset, then stamp tzinfo=UTC so the result
+            # is an absolute instant. This must be aware so comparisons
+            # against `now` (line 389, also aware) don't crash.
+            dt_utc = dt - timedelta(hours=src_off)
+            dt_utc = dt_utc.replace(tzinfo=timezone.utc)
             # Score (Wiki layout is "home–away" or "away–home", symmetric;
             # we don't know which side is home at this point. Just parse
             # the two numbers; we swap to PL-perspective below.)
@@ -268,7 +312,14 @@ def parse_matches_from_wikipedia(html: str, gender: str) -> list[dict]:
             out.append(
                 {
                     "date": dt.strftime("%Y-%m-%d"),
-                    "dt": dt_warsaw,
+                    # dt_utc is the absolute UTC instant — used by the
+                    # stale-detect comparison and serialised as start_at.
+                    "dt": dt_utc,
+                    # dt_local is the naive wall-clock time from the
+                    # Wikipedia cell (e.g. "17:00" for Bangkok = UTC+7).
+                    # Kept separate from dt so date_human/time_human can
+                    # show the local match time, not the UTC conversion.
+                    "dt_local": dt,
                     "home": "Polska",
                     "away": opponent,
                     "home_flag": "pl",
@@ -310,8 +361,8 @@ def time_human(dt: datetime) -> str:
 def match_payload(item: dict) -> dict:
     return {
         "date": item["date"],
-        "date_human": date_human(item["dt"]),
-        "time": time_human(item["dt"]),
+        "date_human": date_human(item["dt_local"]),
+        "time": time_human(item["dt_local"]),
         "start_at": item["dt"].isoformat(),
         "home": {"name": item["home"], "flag": item["home_flag"]},
         "away": {"name": item["away"], "flag": item["away_flag"]},
