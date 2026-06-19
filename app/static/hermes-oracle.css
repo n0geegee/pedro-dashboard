@@ -106,13 +106,27 @@ body[data-skin="oracle"] {
   --skin-edge-url: none;
   --skin-edge-opacity: 0;
   --skin-edge-blend: normal;
+}
 
-  /* Match-day flag — let the PL gradient show through, keep gradient body-bg as fallback */
+body[data-skin="oracle"] {
+  font-family: var(--oracle-font-ui);
+}
+
+/* ========== Match-day flag: PL 50/50 ==========
+ * Auto-renders ONLY when:
+ *   - the oracle skin is active (body[data-skin="oracle"])
+ *   - the server has flagged today as a Poland match day
+ *     (body[data-pl-matchday="1"]), computed in app/server.py against
+ *     volleyball.men + volleyball.women for the Europe/Warsaw local window.
+ * The flag uses fixed pseudo-elements at z-index 0; .layout and .ticker
+ * sit above it at z-index 1 so the dashboard content remains readable.
+ */
+body[data-skin="oracle"][data-pl-matchday="1"] {
   background: transparent;
   position: relative;
 }
 
-body[data-skin="oracle"]::before {
+body[data-skin="oracle"][data-pl-matchday="1"]::before {
   content: "";
   position: fixed;
   inset: 0;
@@ -125,24 +139,22 @@ body[data-skin="oracle"]::before {
   );
 }
 
-body[data-skin="oracle"]::after {
+body[data-skin="oracle"][data-pl-matchday="1"]::after {
   content: "";
   position: fixed;
-  left: 0; right: 0; top: 50%;
+  left: 0;
+  right: 0;
+  top: 50%;
   height: 1px;
   z-index: 0;
   pointer-events: none;
   background: rgba(0, 0, 0, 0.18);
 }
 
-body[data-skin="oracle"] .layout,
-body[data-skin="oracle"] .ticker {
+body[data-skin="oracle"][data-pl-matchday="1"] .layout,
+body[data-skin="oracle"][data-pl-matchday="1"] .ticker {
   position: relative;
   z-index: 1;
-}
-
-body[data-skin="oracle"] {
-  font-family: var(--oracle-font-ui);
 }
 
 /* ========== PANEL CHROME — additive .ornate-panel wrapper ==========

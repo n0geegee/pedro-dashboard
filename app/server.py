@@ -28,12 +28,20 @@ import socketserver  # noqa: F401  (kept for stdlib parity with plan)
 import sys
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import datetime, time as dtime, timezone
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, List, Tuple
 from urllib.parse import urlparse
+from zoneinfo import ZoneInfo
+
+WARSAW_TZ = ZoneInfo("Europe/Warsaw")
+_PLACEHOLDER_PL_MATCHDAY = "{{pl_matchday}}"
+_BODY_TAG_RE = re.compile(
+    r"<body\b([^>]*)>",
+    re.IGNORECASE,
+)
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -309,6 +317,96 @@ def load_widget(name: str) -> Dict[str, Any]:
     }
 
 
+def _parse_iso_utc(value: Any) -> datetime | None:
+    """Parse an ISO-8601 timestamp into a timezone-aware datetime (UTC).
+
+    Returns None when the value is missing or malformed. The dashboard stores
+    start_at values as ISO-8601 with an explicit offset (typically "+00:00"),
+    but we tolerate naive timestamps by assuming UTC.
+    """
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        stamp = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if stamp.tzinfo is None:
+        stamp = stamp.replace(tzinfo=timezone.utc)
+    return stamp.astimezone(timezone.utc)
+
+
+def _poland_match_today(now: datetime | None = None) -> bool:
+    """True iff volleyball.json has any Poland match whose start_at (UTC) lands
+    in the current local Warsaw day window (00:00-23:59 Europe/Warsaw).
+
+    Scans both volleyball.men and volleyball.women for a match where either
+    home.flag == "pl" or away.flag == "pl". The scan is tolerant of missing
+    or malformed state files — a missing volleyball.json simply yields False.
+    """
+    widget = load_widget("volleyball")
+    data = widget.get("data") if isinstance(widget, dict) else None
+    if not isinstance(data, dict):
+        return False
+    groups: List[List[Dict[str, Any]]] = []
+    for key in ("men", "women"):
+        group = data.get(key)
+        if isinstance(group, list):
+            groups.append(group)
+    if not groups:
+        return False
+    if now is None:
+        now = datetime.now(WARSAW_TZ)
+    else:
+        now = now.astimezone(WARSAW_TZ)
+    day_start = datetime.combine(now.date(), dtime.min, tzinfo=WARSAW_TZ)
+    day_end = datetime.combine(now.date(), dtime.max, tzinfo=WARSAW_TZ)
+    for group in groups:
+        for match in group:
+            if not isinstance(match, dict):
+                continue
+            home = match.get("home") or {}
+            away = match.get("away") or {}
+            is_poland = (
+                (isinstance(home, dict) and home.get("flag") == "pl")
+                or (isinstance(away, dict) and away.get("flag") == "pl")
+            )
+            if not is_poland:
+                continue
+            stamp = _parse_iso_utc(match.get("start_at"))
+            if stamp is None:
+                continue
+            local_stamp = stamp.astimezone(WARSAW_TZ)
+            if day_start <= local_stamp <= day_end:
+                return True
+    return False
+
+
+def _render_index_html(raw_html: str) -> str:
+    """Inject the server-computed body attributes into the static index.html.
+
+    The static template carries a {{pl_matchday}} placeholder in the <body>
+    tag. We replace it with a real "1" or "0" based on the volleyball widget
+    state. If the placeholder is missing (older template), we fall back to a
+    regex-based injection on the <body> tag.
+    """
+    flag = "1" if _poland_match_today() else "0"
+    if _PLACEHOLDER_PL_MATCHDAY in raw_html:
+        return raw_html.replace(_PLACEHOLDER_PL_MATCHDAY, flag, 1)
+
+    def _inject(match: "re.Match[str]") -> str:
+        attrs = match.group(1) or ""
+        # Strip any prior data-pl-matchday so we don't double-attribute.
+        attrs = re.sub(
+            r'\s+data-pl-matchday\s*=\s*"[^"]*"',
+            "",
+            attrs,
+        )
+        return f"<body{attrs} data-pl-matchday=\"{flag}\">"
+
+    rendered = _BODY_TAG_RE.sub(_inject, raw_html, count=1)
+    return rendered
+
+
 def load_aggregated_state() -> Dict[str, Any]:
     widgets = {name: load_widget(name) for name in STATE_FILES}
     # Top-level status: error if any error; stale if any stale; ok otherwise
@@ -329,6 +427,10 @@ def load_aggregated_state() -> Dict[str, Any]:
             "host": HOST,
             "port": PORT,
         },
+        # Server-side match-day signal for the PL 50/50 flag. Mirrors the
+        # `data-pl-matchday` attribute injected into <body> by _render_index_html.
+        # Computed against Europe/Warsaw local-day window (00:00-23:59).
+        "poland_match_today": _poland_match_today(),
         "widgets": widgets,
     }
 
@@ -375,13 +477,40 @@ class PedroHandler(BaseHTTPRequestHandler):
 
     # ---- routing -----------------------------------------------------------
 
+    def _send_html(self, html_text: str) -> None:
+        """Serve a rendered HTML payload (UTF-8). Used for index.html with
+        server-injected body attributes such as data-pl-matchday."""
+        body = html_text.encode("utf-8")
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.end_headers()
+        self.wfile.write(body)
+
     def _route(self, *, send_body: bool) -> None:
         parsed = urlparse(self.path)
         path = parsed.path
 
         try:
             if path == "/" or path == "/index.html":
-                self._send_file(STATIC_DIR / "index.html", "text/html; charset=utf-8", send_body=send_body)
+                if not send_body:
+                    # HEAD — send same headers as GET but no body.
+                    raw = (STATIC_DIR / "index.html").read_bytes()
+                    self.send_response(HTTPStatus.OK)
+                    self.send_header("Content-Type", "text/html; charset=utf-8")
+                    self.send_header("Content-Length", str(len(raw)))
+                    self.send_header("Cache-Control", "no-store")
+                    self.end_headers()
+                    return
+                try:
+                    raw_text = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+                except OSError as exc:
+                    log.warning("index.html read failed: %s (%s)", STATIC_DIR / "index.html", exc)
+                    self._send_json(HTTPStatus.NOT_FOUND, {"error": "not_found"})
+                    return
+                self._send_html(_render_index_html(raw_text))
                 return
             if path == "/api/health":
                 self._send_json(
