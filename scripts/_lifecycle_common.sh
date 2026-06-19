@@ -59,14 +59,39 @@ PEDRO_AUTOSTART_SERVER_FILE="${PEDRO_AUTOSTART_SERVER_FILE:-$PEDRO_XDG_AUTOSTART
 PEDRO_AUTOSTART_KIOSK_FILE="${PEDRO_AUTOSTART_KIOSK_FILE:-$PEDRO_XDG_AUTOSTART_DIR/pedro-dashboard-kiosk.desktop}"
 
 # Voice subsystem (v1.2 push-to-talk "hey pedro")
-PEDRO_VOICE_PY_BIN="${PEDRO_VOICE_PY_BIN:-$HOME/.local/share/pedro-voice-venv/bin/python}"
+PEDRO_VOICE_PY_BIN="${PEDRO_VOICE_PY_BIN:-$PEDRO_PROJECT_ROOT/.venv-voice/bin/python}"
 PEDRO_VOICE_DAEMON_SCRIPT="${PEDRO_VOICE_DAEMON_SCRIPT:-$PEDRO_PROJECT_ROOT/scripts/pedro_voice_daemon.py}"
 PEDRO_VOICE_DAEMON_PID_FILE="${PEDRO_VOICE_DAEMON_PID_FILE:-$PEDRO_RUN_DIR/voice_daemon.pid}"
 PEDRO_VOICE_DAEMON_LOG_FILE="${PEDRO_VOICE_DAEMON_LOG_FILE:-$PEDRO_LOG_DIR/voice_daemon.log}"
 PEDRO_VOICE_TRIGGER_KEYCODE="${PEDRO_VOICE_TRIGGER_KEYCODE:-65}"  # Space
-PEDRO_MIC_DEVICE="${PEDRO_MIC_DEVICE:-plughw:0,0}"
+PEDRO_MIC_DEVICE="${PEDRO_MIC_DEVICE:-plughw:0,2}"
 PEDRO_PRIVACY_FILE="${PEDRO_PRIVACY_FILE:-$PEDRO_STATE_DIR/privacy_mode}"
 PEDRO_AUTOSTART_VOICE_FILE="${PEDRO_AUTOSTART_VOICE_FILE:-$PEDRO_XDG_AUTOSTART_DIR/pedro-voice-daemon.desktop}"
+
+# Voice subsystem v1.4 — always-listening "hey pedro" KWS daemon
+# (Vosk streaming STT → Gemini command STT → runner → espeak-ng TTS)
+# Replaces v1.3 push-to-talk on the iMac because that kiosk has no keyboard.
+PEDRO_VOICE_KWS_SCRIPT="${PEDRO_VOICE_KWS_SCRIPT:-$PEDRO_PROJECT_ROOT/scripts/pedro_voice_kws.py}"
+PEDRO_VOICE_KWS_PID_FILE="${PEDRO_VOICE_KWS_PID_FILE:-$PEDRO_RUN_DIR/voice_kws.pid}"
+PEDRO_VOICE_KWS_LOG_FILE="${PEDRO_VOICE_KWS_LOG_FILE:-$PEDRO_LOG_DIR/voice_kws.log}"
+PEDRO_VOSK_MODEL="${PEDRO_VOSK_MODEL:-$HOME/.local/share/vosk/models/small-pl}"
+PEDRO_VOICE_KWS_COMMAND_SECONDS="${PEDRO_VOICE_KWS_COMMAND_SECONDS:-4.0}"
+PEDRO_AUTOSTART_VOICE_KWS_FILE="${PEDRO_AUTOSTART_VOICE_KWS_FILE:-$PEDRO_XDG_AUTOSTART_DIR/pedro-voice-kws.desktop}"
+
+# Photos slideshow tuning (scripts/refresh-photos-slideshow.py)
+# Override the 30 min default; user wants fresh photos on a 5 min cycle
+# so newly added Google Photos items show up quickly on the kiosk.
+PEDRO_GOOGLE_PHOTOS_REFRESH_SECONDS="${PEDRO_GOOGLE_PHOTOS_REFRESH_SECONDS:-300}"
+export PEDRO_GOOGLE_PHOTOS_REFRESH_SECONDS
+# User's shared album has been growing — 191 items on 2026-06-16,
+# ~246 by mid-day. Default cap (80) silently dropped most of them.
+# Raise to 300 for headroom; user can keep adding without re-tuning.
+PEDRO_GOOGLE_PHOTOS_MAX_IMAGES="${PEDRO_GOOGLE_PHOTOS_MAX_IMAGES:-300}"
+export PEDRO_GOOGLE_PHOTOS_MAX_IMAGES
+# User wants 5 s/photo so the full 220-item album cycles in ~18 min
+# instead of ~165 min. Default in script is 45 s.
+PEDRO_GOOGLE_PHOTOS_SLIDE_SECONDS="${PEDRO_GOOGLE_PHOTOS_SLIDE_SECONDS:-5}"
+export PEDRO_GOOGLE_PHOTOS_SLIDE_SECONDS
 
 # --- helpers --------------------------------------------------------------
 
@@ -199,6 +224,24 @@ pedro_voice_daemon_alive() {
   else
     echo 0
   fi
+}
+
+pedro_voice_kws_alive() {
+  # Same shape as pedro_voice_daemon_alive but for the v1.4 KWS daemon.
+  # The KWS daemon also writes the legacy voice_daemon.pid alias so the
+  # v1.3 refresher does not race us; this helper prefers the canonical
+  # voice_kws.pid and falls back to the legacy alias.
+  local pidfile="${PEDRO_VOICE_KWS_PID_FILE:-}"
+  if [[ -n "$pidfile" ]] && [[ -f "$pidfile" ]]; then
+    local pid
+    pid="$(tr -d '[:space:]' < "$pidfile" 2>/dev/null || true)"
+    if [[ "$pid" =~ ^[0-9]+$ ]] && kill -0 "$pid" 2>/dev/null; then
+      echo 1
+      return 0
+    fi
+  fi
+  # Fallback: legacy voice_daemon.pid (set as alias by KWS daemon)
+  pedro_voice_daemon_alive
 }
 
 pedro_display_works() {

@@ -33,3 +33,5 @@ backups/
 
 # Runtime media cache (regenerated; do not backup private photo cache)
 app/static/cache/
+
+.test/

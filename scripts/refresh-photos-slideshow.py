@@ -23,6 +23,13 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _probe_common import atomic_write, envelope, now_iso, resolve_state_dir  # noqa: E402
 
+try:
+    from PIL import Image as _PILImage
+    _HAVE_PIL = True
+except Exception:
+    _PILImage = None
+    _HAVE_PIL = False
+
 WIDGET = "media"
 DEFAULT_ALBUM_URL = "https://photos.google.com/share/AF1QipMdT3_Rs-wS-anKMch21iIC3WXenBIeih3IAvCvZ-LkE4l-YtnkiknUdiOR9vNWqQ?key=MWJ4a2o1QkR0Q2xLZmI3TEJodTZJZFY0emlnNG1R"
 DEFAULT_ALBUM_TITLE = "pedro slideshow"
@@ -64,7 +71,11 @@ def extract_photo_urls(html: str, max_images: int) -> list[str]:
             continue
         # Normalize escaped unicode remnants and request a dashboard-friendly size.
         u = u.replace("\\u003d", "=")
-        u = re.sub(r"=(?:w\d+-h\d+|s\d+)(?:-[a-z]+)*$", "=w1400-h900-no", u)
+        # Use =s0 (original / no resize) — GPhotos returns the source asset at
+        # its native resolution. =w/h suffixes were down-scaling even when
+        # the source was already smaller (e.g. 902x902 screenshots), so the
+        # kiosk got 2560x1440 for big images but 902x902 for small ones.
+        u = re.sub(r"=(?:w\d+-h\d+|s\d+)(?:-[a-z]+)*$", "=s0", u)
         if u in seen:
             continue
         seen.add(u)
@@ -95,6 +106,33 @@ def download_if_needed(url: str, dest: Path) -> bool:
     return True
 
 
+def _measure_image(path: Path) -> dict[str, Any]:
+    """Read width/height of a cached image and classify orientation.
+
+    Returns {"width": int|None, "height": int|None, "orientation": str|None}.
+    orientation: "portrait" if w/h < 0.95, "landscape" if w/h > 1.05, else "square".
+    Returns all None on failure (PIL missing, file unreadable, corrupt) so the
+    manifest still loads — JS falls back to the legacy cover behaviour.
+    """
+    if not _HAVE_PIL or not path.exists():
+        return {"width": None, "height": None, "orientation": None}
+    try:
+        with _PILImage.open(path) as img:
+            w, h = img.size
+    except Exception:
+        return {"width": None, "height": None, "orientation": None}
+    if w <= 0 or h <= 0:
+        return {"width": None, "height": None, "orientation": None}
+    ratio = w / h
+    if ratio < 0.95:
+        orientation = "portrait"
+    elif ratio > 1.05:
+        orientation = "landscape"
+    else:
+        orientation = "square"
+    return {"width": w, "height": h, "orientation": orientation}
+
+
 def cache_album(album_url: str, cache_dir: Path, manifest_path: Path, max_images: int) -> dict[str, Any]:
     cache_dir.mkdir(parents=True, exist_ok=True)
     urls = fetch_album_urls(album_url, max_images=max_images)
@@ -112,10 +150,14 @@ def cache_album(album_url: str, cache_dir: Path, manifest_path: Path, max_images
             # Skip individual broken image but keep the album usable.
             images.append({"url": url, "error": type(exc).__name__})
             continue
+        meta = _measure_image(dest)
         images.append({
             "source_url": url,
             "file": str(dest),
             "public_url": "/static/cache/photos/" + dest.name,
+            "width": meta["width"],
+            "height": meta["height"],
+            "orientation": meta["orientation"],
         })
     images = [x for x in images if x.get("public_url")]
     if not images:
@@ -141,11 +183,30 @@ def load_or_refresh_manifest(album_url: str, cache_dir: Path, manifest_path: Pat
     return cache_album(album_url, cache_dir, manifest_path, max_images=max_images)
 
 
-def pick_image(manifest: dict[str, Any], slide_seconds: int) -> tuple[int, dict[str, Any]]:
+def pick_image(manifest: dict[str, Any], slide_seconds: int, last_index: int | None = None) -> tuple[int, dict[str, Any]]:
+    """Pick the next image for the slideshow.
+
+    Two modes:
+      * `last_index is None` (first run / no baseline in media.json) — fall
+        back to a deterministic time-based index so the kiosk is not blank.
+      * `last_index` is provided (subsequent runs) — return
+        `(last_index + 1) % len(images)`. This is the "always next, no skips"
+        behaviour: every call advances by exactly one position, so the
+        dashboard server can be called at any cadence (5s, 20s, 60s) and the
+        user will always see a strictly monotonic progression through the
+        album. Wall-clock modulo is reserved only as a cold-start fallback
+        because it picks a different image on every probe run, which makes
+        the rotation look like it is skipping images.
+    """
     images = [x for x in manifest.get("images", []) if isinstance(x, dict) and x.get("public_url")]
     if not images:
         raise RuntimeError("manifest_has_no_images")
-    idx = int(time.time() // max(5, slide_seconds)) % len(images)
+    if last_index is None or last_index < 0 or last_index >= len(images):
+        # Cold start / out-of-range fallback. Deterministic on the bucket so
+        # two probes within the same slide_seconds window agree.
+        idx = int(time.time() // max(5, slide_seconds)) % len(images)
+    else:
+        idx = (last_index + 1) % len(images)
     return idx + 1, images[idx]
 
 
@@ -165,7 +226,12 @@ def main() -> int:
     data = media.setdefault("data", {})
     try:
         manifest = load_or_refresh_manifest(album_url, cache_dir, manifest_path, refresh_seconds, max_images=max_images)
-        current, image = pick_image(manifest, slide_seconds=slide_seconds)
+        # Read previous current from media.json so pick_image can advance by
+        # exactly one slot instead of jumping to a wall-clock-derived index.
+        # `current` is 1-based in the JSON; convert to 0-based for the math.
+        prev_current = ((data.get("slideshow") or {}).get("current") or 0)
+        last_index = (prev_current - 1) if prev_current > 0 else None
+        current, image = pick_image(manifest, slide_seconds=slide_seconds, last_index=last_index)
         total = int(manifest.get("count") or len(manifest.get("images") or []))
         data["slideshow"] = {
             "album": album_title,
@@ -174,6 +240,9 @@ def main() -> int:
             "provider": "google_photos_shared_album_cache",
             "source_url": album_url,
             "image_url": image["public_url"],
+            "image_orientation": image.get("orientation"),
+            "image_width": image.get("width"),
+            "image_height": image.get("height"),
             "cache_updated_at": manifest.get("updated_at"),
             "slide_seconds": slide_seconds,
         }
