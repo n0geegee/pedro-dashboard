@@ -553,3 +553,17 @@ body[data-skin="oracle"] .dim   { color: var(--oracle-fg-dim);  font-size: 12px;
 /* When assets are present, swap pseudo-element corners. The fallback
    pseudo-corner is not used — the .card::before/::after provides the
    gold rim. Asset slots remain opt-in for later. */
+
+/* ========== v1.4.5 PL match-day flag visibility fix ==========
+   The v1.4.4 ::before/::after sit at z-index 0, which is below
+   body > * (z=1, see styles.css:147). .layout/.ticker/.card all
+   cover the viewport at z=1, so the flag never shows.
+   Fix: lift the flag's stacking position to z-index 2 (matches
+   .card > *), keep pointer-events:none so it never blocks clicks,
+   and put it BELOW .oracle-corner (z=4) so corner ornaments stay
+   on top. Inactive when data-pl-matchday="0" so the oracle skin's
+   normal appearance is unchanged on non-match days. */
+body[data-skin="oracle"][data-pl-matchday="1"]::before,
+body[data-skin="oracle"][data-pl-matchday="1"]::after {
+  z-index: 2;
+}
