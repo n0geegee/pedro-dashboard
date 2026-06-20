@@ -304,6 +304,7 @@ body[data-skin="oracle"] .card--video .card__body--video {
 }
 
 body[data-skin="oracle"] .card--slideshow .card__body--slideshow {
+  padding: 2px 3px 4px;
   background-image: var(--oracle-slideshow-frame-url);
   background-repeat: no-repeat;
   background-position: center;

@@ -826,7 +826,7 @@ body > * { position: relative; z-index: 1; }
 /* ========== SLIDESHOW (LR) ========== */
 
 .card--slideshow .card__body--slideshow {
-  padding: 12px 14px 14px;
+  padding: 2px 3px 4px;
 }
 .slideshow {
   position: relative;
@@ -896,18 +896,16 @@ body > * { position: relative; z-index: 1; }
   background-repeat: no-repeat;
   display: block;
 }
-/* Portrait photos: show the full image with a black letterbox on the
-   sides, instead of cropping the top/bottom with cover. The card frame
-   stays the same size; only the photo scaling changes. */
+/* Portrait/square photos: slight overscan makes better use of the LR
+   frame on the room screen while keeping cropping conservative. */
 .slideshow__photo--portrait {
-  background-size: contain;
+  background-size: auto 106%;
   background-position: center center;
   background-repeat: no-repeat;
   background-color: #000;
 }
-/* Square photos: same as portrait for visual symmetry (no cropping). */
 .slideshow__photo--square {
-  background-size: contain;
+  background-size: auto 104%;
   background-position: center center;
   background-repeat: no-repeat;
   background-color: #000;
