@@ -94,12 +94,22 @@ if [[ "$(pedro_display_works)" != "1" ]]; then
   exit 0
 fi
 
-# Make sure the dashboard is up before pointing Chrome at it. We do not
-# start it from here (that's start-dashboard.sh / watchdog-dashboard.sh's
-# job); we just refuse to launch kiosk against a dead backend.
-if [[ "$(pedro_http_health "$PEDRO_HEALTH_URL" 1)" != "1" ]]; then
-  echo "dashboard health not OK at $PEDRO_HEALTH_URL; start it with scripts/start-dashboard.sh first"
-  pedro_log "start-kiosk.sh: dashboard health not ok; refusing to launch kiosk"
+# Make sure the dashboard is up before pointing Chrome at it. During XFCE
+# autostart, the kiosk entry can race the server entry by a few seconds, so
+# wait briefly before giving up. We still do not start the backend here; the
+# dashboard autostart/watchdog owns that.
+health_wait_seconds="${PEDRO_KIOSK_HEALTH_WAIT_SECONDS:-30}"
+health_ok="0"
+for _ in $(seq 0 "$health_wait_seconds"); do
+  if [[ "$(pedro_http_health "$PEDRO_HEALTH_URL" 1)" == "1" ]]; then
+    health_ok="1"
+    break
+  fi
+  sleep 1
+done
+if [[ "$health_ok" != "1" ]]; then
+  echo "dashboard health not OK at $PEDRO_HEALTH_URL after ${health_wait_seconds}s; start it with scripts/start-dashboard.sh first"
+  pedro_log "start-kiosk.sh: dashboard health not ok after wait=${health_wait_seconds}s; refusing to launch kiosk"
   exit 75
 fi
 
