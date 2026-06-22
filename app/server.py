@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Pedro Dashboard — Etap 1 lightweight static MVP server.
 
-Python stdlib only. Bind default 127.0.0.1:17890.
+Python stdlib only. Bind default 127.0.0.1:17888 (PEDRO_PORT env override).
 
 Endpoints:
 - GET /                  -> serves static index.html
@@ -19,22 +19,47 @@ status="error" but never crash the server.
 """
 from __future__ import annotations
 
+# Ensure the project root is on sys.path when this file is invoked as
+# `python3 <project>/app/server.py` (the runtime path used by
+# `scripts/start-dashboard.sh`). Without this, `from app.config import ...`
+# would fail with `ModuleNotFoundError: No module named 'app'` because
+# Python only adds the directory containing the script to sys.path, not
+# the project root. Running as `python3 -m app.server` already does the
+# right thing; this shim keeps both invocations equivalent.
+import sys
+from pathlib import Path
+
+_PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)
+if sys.path[0] != _PROJECT_ROOT:
+    sys.path.insert(0, _PROJECT_ROOT)
+del _PROJECT_ROOT
+
 import json
 import logging
 import os
 import re
 import signal
 import socketserver  # noqa: F401  (kept for stdlib parity with plan)
-import sys
 import threading
 import time
 from datetime import datetime, time as dtime, timezone
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
 from typing import Any, Dict, List, Tuple
 from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
+
+from app.config import (
+    APP_DIR,
+    HOST,
+    LOG_LEVEL,
+    LOGS_DIR,
+    PORT,
+    PRIVACY_MODE,
+    STATE_DIR,
+    STATIC_DIR,
+    VERSION,
+)
 
 WARSAW_TZ = ZoneInfo("Europe/Warsaw")
 _PLACEHOLDER_PL_MATCHDAY = "{{pl_matchday}}"
@@ -44,23 +69,10 @@ _BODY_TAG_RE = re.compile(
 )
 
 # ---------------------------------------------------------------------------
-# Configuration
+# Configuration (see app/config.py for defaults and env overrides)
 # ---------------------------------------------------------------------------
 
-DEFAULT_HOST = "127.0.0.1"
-DEFAULT_PORT = 17890
-APP_DIR = Path(__file__).resolve().parent
-STATIC_DIR = APP_DIR / "static"
-STATE_DIR = APP_DIR / "state"
-LOGS_DIR = APP_DIR / "logs"
-
-# Env overrides (kept simple for Etap 1). Keep MVP loopback-only by default and
-# refuse accidental LAN exposure; explicit LAN support is a future decision.
-_requested_host = os.environ.get("DASHBOARD_HOST", DEFAULT_HOST)
-HOST = _requested_host if _requested_host in ("127.0.0.1", "localhost") else DEFAULT_HOST
-PORT = int(os.environ.get("DASHBOARD_PORT", str(DEFAULT_PORT)))
-PRIVACY_MODE = os.environ.get("DASHBOARD_PRIVACY_MODE", "private")  # MVP default
-
+DEFAULT_HOST = "127.0.0.1"  # backward-compat re-export (used in docstrings)
 SERVER_STARTED_AT = time.time()
 SERVER_STARTED_ISO = datetime.now(timezone.utc).isoformat(timespec="seconds")
 
@@ -72,7 +84,7 @@ LOGS_DIR.mkdir(parents=True, exist_ok=True)
 LOG_PATH = LOGS_DIR / "server.log"
 
 logging.basicConfig(
-    level=os.environ.get("DASHBOARD_LOG_LEVEL", "INFO"),
+    level=LOG_LEVEL,
     format="%(asctime)s %(levelname)s %(message)s",
     handlers=[
         logging.FileHandler(LOG_PATH, encoding="utf-8"),
@@ -518,7 +530,7 @@ class PedroHandler(BaseHTTPRequestHandler):
                     {
                         "status": "ok",
                         "service": "pedro_dashboard",
-                        "version": "0.1.0",
+                        "version": VERSION,
                         "etap": 1,
                         "updated_at": _now_iso(),
                         "uptime_seconds": int(time.time() - SERVER_STARTED_AT),
