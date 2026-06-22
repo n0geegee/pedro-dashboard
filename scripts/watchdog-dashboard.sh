@@ -76,7 +76,15 @@ check_once() {
     health_ok="$(echo "$status_json" | awk -F'"health_ok":' '{print $2}' | awk -F',' '{print $1}')"
   fi
   if [[ "$health_ok" == "1" ]]; then
-    pedro_log "watchdog-dashboard.sh: health ok, nothing to do"
+    pedro_log "watchdog-dashboard.sh: health ok"
+    if [[ "$(pedro_display_works)" == "1" ]]; then
+      if ! "$SCRIPT_DIR/start-kiosk.sh" --status >/dev/null 2>&1; then
+        pedro_log "watchdog-dashboard.sh: kiosk missing while health ok; starting kiosk"
+        "$SCRIPT_DIR/start-kiosk.sh" >>"$PEDRO_WATCHDOG_LOG_FILE" 2>&1 || true
+      fi
+    else
+      pedro_log "watchdog-dashboard.sh: health ok but DISPLAY down; kiosk check skipped"
+    fi
   else
     pedro_log "watchdog-dashboard.sh: health not ok; attempting restart"
     if (( $(restart_in_window) >= MAX_RESTART_PER_HOUR )); then
