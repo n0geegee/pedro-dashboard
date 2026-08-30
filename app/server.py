@@ -60,6 +60,11 @@ from app.config import (
     STATIC_DIR,
     VERSION,
 )
+from app.state_store import (
+    empty_envelope as _empty_envelope,
+    is_stale as _is_stale,
+    read_json as _read_json,
+)
 
 WARSAW_TZ = ZoneInfo("Europe/Warsaw")
 _PLACEHOLDER_PL_MATCHDAY = "{{pl_matchday}}"
@@ -124,29 +129,6 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-def _is_stale(updated_at: Any, ttl_seconds: Any) -> bool:
-    """Return True when a state payload is older than its TTL.
-
-    Malformed/missing timestamps are treated as stale if a positive TTL exists.
-    """
-    try:
-        ttl = float(ttl_seconds)
-    except (TypeError, ValueError):
-        return False
-    if ttl <= 0:
-        return False
-    if not isinstance(updated_at, str) or not updated_at:
-        return True
-    try:
-        stamp = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
-    except ValueError:
-        return True
-    if stamp.tzinfo is None:
-        stamp = stamp.replace(tzinfo=timezone.utc)
-    age = (datetime.now(timezone.utc) - stamp.astimezone(timezone.utc)).total_seconds()
-    return age > ttl
-
-
 def _redact_public_text(value: Any) -> str:
     """Redact secret-looking fragments before JSON reaches the UI."""
     if value is None:
@@ -194,32 +176,6 @@ def _privacy_filter_voice(out: Dict[str, Any]) -> Dict[str, Any]:
     out["utterance"] = utterance
     out["result"] = result
     return out
-
-
-def _empty_envelope(name: str, status: str = "empty", error: str = None) -> Dict[str, Any]:
-    return {
-        "status": status,
-        "updated_at": None,
-        "ttl_seconds": None,
-        "privacy_mode": PRIVACY_MODE,
-        "data": {},
-        "error": error,
-        "_widget": name,
-    }
-
-
-def _read_json(path: Path) -> Tuple[bool, Any, str]:
-    """Tolerant JSON read. Returns (ok, payload, error_message)."""
-    if not path.exists():
-        return False, None, f"missing:{path.name}"
-    try:
-        with path.open("r", encoding="utf-8") as f:
-            data = json.load(f)
-    except json.JSONDecodeError as exc:
-        return False, None, f"json_decode_error:{exc.msg}@line{exc.lineno}"
-    except OSError as exc:
-        return False, None, f"io_error:{exc.strerror or exc}"
-    return True, data, None
 
 
 def _load_minimax_usage() -> Dict[str, Any]:
@@ -275,6 +231,11 @@ def _load_minimax_usage() -> Dict[str, Any]:
     }
 
 
+# NOTE: ``load_widget`` enforces the voice-console contract (top-level
+# voice/utterance/activity/result fields) and the rollup ``server`` +
+# ``poland_match_today`` fields the UI consumes. Both pieces are coupled
+# to widget-specific behavior, so the generic helpers live in
+# ``app.state_store`` and the orchestration stays here.
 def load_widget(name: str) -> Dict[str, Any]:
     """Load a single widget state, normalizing to the envelope contract.
 
@@ -286,14 +247,14 @@ def load_widget(name: str) -> Dict[str, Any]:
     """
     fname = STATE_FILES.get(name)
     if fname is None:
-        return _empty_envelope(name, status="error", error=f"unknown_widget:{name}")
+        return _empty_envelope(name, status="error", error=f"unknown_widget:{name}", privacy_mode=PRIVACY_MODE)
     ok, payload, err = _read_json(STATE_DIR / fname)
     if not ok:
         # Distinguish missing (empty) vs broken (error)
         status = "empty" if err and err.startswith("missing:") else "error"
-        return _empty_envelope(name, status=status, error=err)
+        return _empty_envelope(name, status=status, error=err, privacy_mode=PRIVACY_MODE)
     if not isinstance(payload, dict):
-        return _empty_envelope(name, status="error", error="payload_not_object")
+        return _empty_envelope(name, status="error", error="payload_not_object", privacy_mode=PRIVACY_MODE)
 
     raw_status = payload.get("status", "ok")
     status = raw_status if raw_status in ("ok", "stale", "error", "empty", "disabled") else "ok"
