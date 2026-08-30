@@ -38,6 +38,15 @@ if [[ -f "$HOME/.hermes/.env" ]]; then
   set +a
 fi
 
+# Pedro Birdwatch integration (BirdNET-Go paths/thresholds).
+# Kept outside Hermes secrets and sourced quietly for no-systemd refresh loops.
+if [[ -f "$HOME/.config/pedro-birdwatch/birdwatch.env" ]]; then
+  set -a
+  # shellcheck disable=SC1090
+  source "$HOME/.config/pedro-birdwatch/birdwatch.env"
+  set +a
+fi
+
 status=0
 
 # Baseline: keeps not-yet-connected display widgets fresh instead of stale.
@@ -73,6 +82,21 @@ for probe in refresh-system-status.py refresh-hermes-status.py refresh-openvikin
     "$probe_py" "$SCRIPT_DIR/$probe" >/dev/null || status=$?
   fi
 done
+
+# Birdwatch LL card (2026-07-02). Must run AFTER write-mock-state.py so the
+# live envelope (kind="birdwatch") overwrites the generic TBD placeholder on
+# every refresh. Tolerant by design: when BirdNET-Go / H4n are absent, the
+# script still writes a graceful status=empty envelope and never crashes the
+# 20s loop. Failures are logged to app/logs/ but exit codes are swallowed so
+# other probes keep running.
+if [[ -f "$SCRIPT_DIR/refresh-birdwatch-status.py" ]]; then
+  BIRDWATCH_LOG_DIR="$PEDRO_PROJECT_ROOT/app/logs"
+  mkdir -p "$BIRDWATCH_LOG_DIR" 2>/dev/null || true
+  if ! "$PY_BIN" "$SCRIPT_DIR/refresh-birdwatch-status.py" \
+      >>"$BIRDWATCH_LOG_DIR/refresh-birdwatch-status.log" 2>&1; then
+    status=$?
+  fi
+fi
 
 # Voice console idle heartbeat (v1.2). Uses the dedicated voice venv so
 # we do not pollute the system python with python-xlib. If the voice
