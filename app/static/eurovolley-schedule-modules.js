@@ -93,13 +93,30 @@
     return result.sort(sortMatches);
   }
 
-  function normalizeWidget(widget, mode) {
+  function parseStartAtMs(value) {
+    if (typeof value !== "string" || !value.trim()) return null;
+    var stamp = value.trim();
+    // A date-only or timezone-less value is not safe for an upcoming filter.
+    if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:\d{2})$/.test(stamp)) return null;
+    var ms = Date.parse(stamp);
+    return Number.isFinite(ms) ? ms : null;
+  }
+
+  function upcomingOnly(rows, nowMs) {
+    var reference = Number.isFinite(Number(nowMs)) ? Number(nowMs) : Date.now();
+    return rows.filter(function (row) {
+      var startMs = parseStartAtMs(row.startAt);
+      return startMs != null && startMs > reference;
+    });
+  }
+
+  function normalizeWidget(widget, mode, nowMs) {
     var envelope = widget && typeof widget === "object" ? widget : {};
     var data = envelope.data && typeof envelope.data === "object" ? envelope.data : {};
     var rows;
     var days = [];
     if (mode === "poland") {
-      rows = dedupeAndSort(data.poland_matches);
+      rows = upcomingOnly(dedupeAndSort(data.poland_matches), nowMs);
     } else {
       if (Array.isArray(data.days)) {
         data.days.forEach(function (day) {
@@ -128,7 +145,7 @@
   function dateLabel(isoDate, selectedDate) {
     if (!isoDate) return "TERMIN";
     var parts = isoDate.split("-");
-    var shortDate = parts.length === 3 ? parts[2] + "." + parts[1] : isoDate;
+    var shortDate = parts.length === 3 ? parts[2] + "." + parts[1] + "." + parts[0] : isoDate;
     return isoDate === selectedDate ? "DZIŚ · " + shortDate : shortDate;
   }
 
@@ -154,10 +171,14 @@
     rootNode.appendChild(head);
   }
 
-  function appendRow(doc, parent, row) {
-    var item = make(doc, "div", "euro-schedule__row");
-    item.setAttribute("data-gender", row.gender);
-    item.appendChild(make(doc, "div", "euro-schedule__time", row.time + " PL"));
+  function appendWhen(doc, parent, row, includeDate) {
+    var when = make(doc, "div", "euro-schedule__when");
+    if (includeDate) when.appendChild(make(doc, "span", "euro-schedule__date", dateLabel(row.date)));
+    when.appendChild(make(doc, "span", "euro-schedule__time", row.time + " PL"));
+    parent.appendChild(when);
+  }
+
+  function appendMatch(doc, parent, row) {
     var match = make(doc, "div", "euro-schedule__match");
     var teams = make(doc, "div", "euro-schedule__teams");
     teams.appendChild(make(doc, "span", "euro-schedule__team euro-schedule__team--home", row.home.name));
@@ -168,9 +189,53 @@
     meta.appendChild(make(doc, "span", "euro-schedule__gender", row.gender));
     meta.appendChild(make(doc, "span", "euro-schedule__phase", row.phase));
     match.appendChild(meta);
-    item.appendChild(match);
+    parent.appendChild(match);
+  }
+
+  function appendRow(doc, parent, row) {
+    var item = make(doc, "div", "euro-schedule__row");
+    item.setAttribute("data-gender", row.gender);
+    appendWhen(doc, item, row, true);
+    appendMatch(doc, item, row);
     item.appendChild(make(doc, "div", "euro-schedule__status " + statusClass(row), statusLabel(row)));
     parent.appendChild(item);
+  }
+
+  function appendTableRow(doc, parent, row) {
+    var item = make(doc, "tr", "euro-schedule__table-row");
+    item.setAttribute("data-gender", row.gender);
+    var when = make(doc, "td", "euro-schedule__table-when");
+    appendWhen(doc, when, row, false);
+    item.appendChild(when);
+    var match = make(doc, "td", "euro-schedule__table-match");
+    appendMatch(doc, match, row);
+    item.appendChild(match);
+    var gender = make(doc, "td", "euro-schedule__table-gender");
+    gender.appendChild(make(doc, "span", "euro-schedule__gender", row.gender));
+    item.appendChild(gender);
+    item.appendChild(make(doc, "td", "euro-schedule__table-status euro-schedule__status " + statusClass(row), statusLabel(row)));
+    parent.appendChild(item);
+  }
+
+  function appendDailyTable(doc, section, day, selectedDate) {
+    var table = make(doc, "table", "euro-schedule__table");
+    table.setAttribute("aria-label", "Mecze " + dateLabel(day.date, selectedDate));
+    var colgroup = make(doc, "colgroup");
+    ["time", "match", "gender", "status"].forEach(function (name) {
+      colgroup.appendChild(make(doc, "col", "euro-schedule__table-col euro-schedule__table-col--" + name));
+    });
+    table.appendChild(colgroup);
+    var thead = make(doc, "thead");
+    var headRow = make(doc, "tr");
+    ["CZAS", "MECZ", "K/M", "STATUS"].forEach(function (label) {
+      headRow.appendChild(make(doc, "th", "euro-schedule__table-head", label));
+    });
+    thead.appendChild(headRow);
+    table.appendChild(thead);
+    var tbody = make(doc, "tbody");
+    day.matches.forEach(function (row) { appendTableRow(doc, tbody, row); });
+    table.appendChild(tbody);
+    section.appendChild(table);
   }
 
   function appendEmpty(doc, parent, message) {
@@ -207,7 +272,7 @@
     model.days.forEach(function (day) {
       var section = make(doc, "section", "euro-schedule__day");
       section.appendChild(make(doc, "h3", "euro-schedule__day-title", dateLabel(day.date, model.selectedDate)));
-      day.matches.forEach(function (row) { appendRow(doc, section, row); });
+      appendDailyTable(doc, section, day, model.selectedDate);
       rootNode.appendChild(section);
     });
   }
@@ -252,7 +317,7 @@
   };
 
   // Expose pure selectors for deterministic tests without exposing DOM helpers.
-  modules.normalizePoland = function (widget) { return normalizeWidget(widget, "poland"); };
-  modules.normalizeDaily = function (widget) { return normalizeWidget(widget, "daily"); };
+  modules.normalizePoland = function (widget, nowMs) { return normalizeWidget(widget, "poland", nowMs); };
+  modules.normalizeDaily = function (widget, nowMs) { return normalizeWidget(widget, "daily", nowMs); };
   root.PedroEuroScheduleModules = modules;
 }(typeof globalThis !== "undefined" ? globalThis : this));
