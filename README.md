@@ -2,7 +2,18 @@
 
 **Cel projektu:** zbudować lekki, zawsze włączony dashboard pokojowy na starym iMacu z MX Linux, działający w Chrome/Chromium kiosk na ekranie **1920×1200**, z panelem **LL / lower-left** jako przyszłą **Pedro Voice Console** aktywowaną frazą „hej Pedro”.
 
-To jest **plan wdrożenia, nie kod**. MVP ma powstać bez Node/Electron/React: **Python + static HTML/CSS + vanilla JS**, lokalny stan w JSON zapisywany atomowo, uruchamianie bez systemd przez XDG autostart + crontab/watchdog.
+To jest historyczny plan wdrożenia. Bieżący checkout zawiera już działający dashboard oraz zweryfikowany slot runtime v1.
+
+## Current implementation handoff — 2026-09-06
+
+- **Canonical architecture:** [`docs/architecture/SLOT_RUNTIME.md`](docs/architecture/SLOT_RUNTIME.md)
+- **Session/operator handoff:** [`AGENTS.md`](AGENTS.md)
+- **Current assignments:** `UL=volleyball`, `UR=polsat-status`, `LL=birdwatch`, `LR=photos`
+- **Durable branch:** `refactor/pedro-dashboard-slot-runtime` (published on `origin`)
+
+The slot runtime replaces only the content inside the existing four card hosts. The grid, left utility column, ticker, clock, skins, and fullscreen overlay remain shell-owned. `LL` is a replaceable slot; Birdwatch is its current assignment and is not a permanent slot identity. See the canonical document before making changes.
+
+The original planning text below is retained as historical project context. Do not use its old "plan, not code" sentence as the current implementation status.
 
 ## Założenia bazowe
 
