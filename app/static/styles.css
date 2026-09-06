@@ -580,6 +580,168 @@ body > * { position: relative; z-index: 1; }
   font-size: 12px;
 }
 
+/* ========== EUROVOLLEY SCHEDULE MODULES ========== */
+
+.euro-schedule {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  color: var(--fg);
+}
+.euro-schedule__intro {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--line);
+}
+.euro-schedule__kicker {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg-soft);
+  font-size: 13px;
+  font-weight: 850;
+  letter-spacing: 0.5px;
+}
+.euro-schedule__freshness {
+  flex: 0 0 auto;
+  color: var(--fg-mute);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.35px;
+  white-space: nowrap;
+}
+.euro-schedule__gender-section,
+.euro-schedule__day {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  min-height: 0;
+}
+.euro-schedule__section-title,
+.euro-schedule__day-title {
+  margin: 2px 0 1px;
+  color: var(--fg-mute);
+  font-size: 11px;
+  font-weight: 850;
+  letter-spacing: 0.7px;
+  text-transform: uppercase;
+}
+.euro-schedule__day-title {
+  color: var(--fg-soft);
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 2px;
+}
+.euro-schedule__row {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: 31px;
+  padding: 4px 7px;
+  border: 1px solid var(--line-2);
+  border-radius: 7px;
+  background: rgba(18, 24, 34, 0.63);
+}
+.euro-schedule--poland .euro-schedule__row {
+  min-height: 34px;
+}
+.euro-schedule__time {
+  color: var(--fg-mute);
+  font-size: 11px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.euro-schedule__match {
+  min-width: 0;
+}
+.euro-schedule__teams {
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
+  gap: 5px;
+  line-height: 1.1;
+}
+.euro-schedule__team {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg);
+  font-size: 13px;
+  font-weight: 800;
+}
+.euro-schedule__versus {
+  flex: 0 0 auto;
+  color: var(--fg-dim);
+  font-size: 11px;
+  font-weight: 800;
+}
+.euro-schedule__meta {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  margin-top: 2px;
+  color: var(--fg-mute);
+  font-size: 10px;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+.euro-schedule__gender {
+  flex: 0 0 auto;
+  min-width: 18px;
+  padding: 1px 4px;
+  border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 4px;
+  color: var(--fg-soft);
+  font-size: 9px;
+  font-weight: 900;
+  text-align: center;
+}
+.euro-schedule__row[data-gender="K"] .euro-schedule__gender {
+  color: #ffb0c0;
+  border-color: rgba(255, 120, 150, 0.45);
+}
+.euro-schedule__row[data-gender="M"] .euro-schedule__gender {
+  color: #a9c9ff;
+  border-color: rgba(110, 170, 255, 0.45);
+}
+.euro-schedule__phase {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.euro-schedule__status {
+  min-width: 42px;
+  color: var(--fg-mute);
+  font-size: 10px;
+  font-weight: 900;
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.euro-schedule__status--finished { color: var(--green); }
+.euro-schedule__status--live { color: var(--red); }
+.euro-schedule__status--postponed { color: var(--orange); }
+.euro-schedule__empty {
+  margin: 8px 0;
+  color: var(--fg-mute);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
 /* ========== LL TBD ========== */
 
 .tbd {

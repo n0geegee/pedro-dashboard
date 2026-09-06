@@ -21,11 +21,11 @@
   var SLOT_LAYOUT_FALLBACK = {
     schema_version: 1,
     engine: "slots-v1",
-    revision: "fallback-birdwatch-1",
+    revision: "fallback-eurovolley-1",
     slots: {
-      UL: { module: "volleyball", enabled: true },
+      UL: { module: "poland-euro-schedule", enabled: true },
       UR: { module: "polsat-status", enabled: true },
-      LL: { module: "birdwatch", enabled: true },
+      LL: { module: "euro-daily-schedule", enabled: true },
       LR: { module: "photos", enabled: true }
     }
   };
@@ -1271,7 +1271,8 @@
   }
 
   function createSlotRegistry() {
-    return {
+    var euroModules = window.PedroEuroScheduleModules || {};
+    var registry = {
       legacy: {
         id: "legacy",
         contractVersion: 1,
@@ -1288,6 +1289,9 @@
       birdwatch: makeRenderModule("birdwatch", ["LL"], ["ll_tbd"], renderTBD),
       photos: makeRenderModule("photos", ["LR"], ["media"], renderSlideshow)
     };
+    if (euroModules.polandEuroSchedule) registry["poland-euro-schedule"] = euroModules.polandEuroSchedule;
+    if (euroModules.euroDailySchedule) registry["euro-daily-schedule"] = euroModules.euroDailySchedule;
+    return registry;
   }
 
   function renderLegacySlotState(state) {

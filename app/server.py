@@ -119,6 +119,7 @@ STATE_FILES: Dict[str, str] = {
     "route": "route.json",
     "calendar": "calendar.json",
     "volleyball": "volleyball.json",
+    "eurovolley": "eurovolley.json",
     "media": "media.json",
     "ll_tbd": "ll_tbd.json",
     "skin": "skin.json",

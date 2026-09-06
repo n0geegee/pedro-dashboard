@@ -1,0 +1,47 @@
+# EuroVolley 2026 schedule modules
+
+The dashboard exposes two explicit `SlotRuntime` modules:
+
+- `poland-euro-schedule` → `UL`: Poland’s official CEV 2026 matches for both
+  women (`K`) and men (`M`), including the full five-match pool schedule from
+  the official calendars plus concrete final-phase matches as CEV publishes
+  them.
+- `euro-daily-schedule` → `LL`: all concrete matches currently published by
+  the official CEV final-phase pages, grouped by Europe/Warsaw date. The
+  selected date is the machine’s current Warsaw date; the returned CEV feed may
+  also contain the next published days.
+
+## Sources
+
+- Women final phase: <https://www-old.cev.eu/Competition-Area/competition.aspx?ID=1573&PID=2992>
+- Men final phase: <https://www-old.cev.eu/Competition-Area/competition.aspx?ID=1572&PID=2990>
+- Women official calendar: <https://webmedia.cev.eu/media/ajxbenea/match-calendars-ev26w.pdf>
+- Men official calendar: <https://webmedia.cev.eu/media/slmjk2cz/match-calendars-ev26m.pdf>
+- CEV schedule announcement: <https://www.cev.eu/articles/volleyball/cev-eurovolley-2026-full-competition-schedule-now-released/>
+
+The probe never synthesizes knockout opponents. CEV `TBD`, winner, and loser
+placeholders are omitted until both teams are concrete on the official page.
+
+## Normalized widget contract
+
+`/api/state.widgets.eurovolley` is a normal state envelope. Its `data` payload
+contains:
+
+- `kind: "eurovolley_schedule"`, `edition: 2026`, `timezone:
+  "Europe/Warsaw"`;
+- `competitions[]` with both `gender: "K"` and `gender: "M"` competitions;
+- `matches[]` and `days[]` for concrete CEV current/future published matches;
+- `poland_matches[]` for Poland’s K/M pool calendar and concrete final-phase
+  matches;
+- normalized `home`/`away` teams, `phase`, `source_date`, `source_time`,
+  Warsaw `warsaw_date`/`warsaw_time`, UTC `start_at`, `status`, and
+  `official_code` where CEV provides one;
+- `official_sources[]` and `freshness` metadata.
+
+Venue-local times are converted with the venue’s IANA timezone before grouping
+and rendering in Warsaw time. A failed CEV fetch keeps the last good data and
+marks the widget `stale`; it does not blank sibling slots.
+
+`refresh-eurovolley.py` is called by the normal state refresher but throttles
+official CEV fetches to 15 minutes by default (`EUROVOLLEY_SOURCE_CACHE_SECONDS`)
+so the kiosk can update knockout fixtures without hammering the source.
