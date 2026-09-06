@@ -14,6 +14,24 @@
   var STATE_URL = "/api/state";
   var HEALTH_URL = "/api/health";
 
+  // Replaceable center/right slots. The JSON file is the active assignment;
+  // this copy keeps the kiosk usable if a static asset is temporarily stale
+  // or unavailable during a restart.
+  var SLOT_LAYOUT_URL = "/static/slot-layout.json";
+  var SLOT_LAYOUT_FALLBACK = {
+    schema_version: 1,
+    engine: "slots-v1",
+    revision: "fallback-birdwatch-1",
+    slots: {
+      UL: { module: "volleyball", enabled: true },
+      UR: { module: "polsat-status", enabled: true },
+      LL: { module: "birdwatch", enabled: true },
+      LR: { module: "photos", enabled: true }
+    }
+  };
+  var slotRuntime = null;
+  var slotRuntimePromise = null;
+
   // Passive room-display rotation: show the dashboard briefly, then let the
   // LR Google Photos slideshow take over the whole kiosk screen for a longer
   // calm-view window. The Chrome window is already in kiosk mode, so this is a
@@ -1217,17 +1235,124 @@
     track.innerHTML = items.map(function (x) { return '<span>' + esc(x) + '</span>'; }).join('');
   }
 
-  // ---- dispatch ---------------------------------------------------------
+  // ---- slot runtime adapters --------------------------------------------
 
+  var SLOT_HOST_SELECTORS = {
+    UL: "#card-volleyball [data-bind=body]",
+    UR: "#card-video [data-bind=video-body]",
+    LL: "#card-ll [data-bind=body]",
+    LR: "#card-slideshow [data-bind=slideshow-body]"
+  };
+
+  function resolveSlotHost(slotId) {
+    var selector = SLOT_HOST_SELECTORS[slotId];
+    return selector ? document.querySelector(selector) : null;
+  }
+
+  function makeRenderModule(id, supportedSlots, dataDeps, renderer) {
+    return {
+      id: id,
+      contractVersion: 1,
+      supportedSlots: supportedSlots,
+      dataDeps: dataDeps,
+      select: function (slice) {
+        return dataDeps.length === 1 ? slice[dataDeps[0]] : slice;
+      },
+      mount: function () {
+        return {};
+      },
+      update: function (ctx, input) {
+        renderer(ctx.host, input);
+      },
+      unmount: function (ctx) {
+        clear(ctx.host);
+      }
+    };
+  }
+
+  function createSlotRegistry() {
+    return {
+      legacy: {
+        id: "legacy",
+        contractVersion: 1,
+        supportedSlots: ["UL", "UR", "LL", "LR"],
+        dataDeps: [],
+        mount: function () { return {}; },
+        update: function (ctx) {
+          emptyMsg(ctx.host, "Moduł slotu jest wyłączony.");
+        },
+        unmount: function (ctx) { clear(ctx.host); }
+      },
+      volleyball: makeRenderModule("volleyball", ["UL"], ["volleyball"], renderVB),
+      "polsat-status": makeRenderModule("polsat-status", ["UR"], ["media"], renderVideo),
+      birdwatch: makeRenderModule("birdwatch", ["LL"], ["ll_tbd"], renderTBD),
+      photos: makeRenderModule("photos", ["LR"], ["media"], renderSlideshow)
+    };
+  }
+
+  function renderLegacySlotState(state) {
+    // Compatibility path only: if slot-runtime.js itself is unavailable,
+    // preserve the exact pre-runtime render ordering and card hosts.
+    var w = (state && state.widgets) || {};
+    var ul = resolveSlotHost("UL");
+    var ur = resolveSlotHost("UR");
+    var ll = resolveSlotHost("LL");
+    var lr = resolveSlotHost("LR");
+    if (ul) renderVB(ul, w.volleyball);
+    if (ur) renderVideo(ur, w.media);
+    if (ll) renderTBD(ll, w.ll_tbd);
+    if (lr) renderSlideshow(lr, w.media);
+  }
+
+  function buildSlotRuntime(layout) {
+    if (!window.PedroSlotRuntime) return null;
+    try {
+      var runtime = window.PedroSlotRuntime.create({
+        layout: layout,
+        registry: createSlotRegistry(),
+        hostResolver: function (slotId) {
+          return resolveSlotHost(slotId);
+        },
+        reportError: function (slotId, moduleId, error) {
+          console.warn("slot failed:", slotId, moduleId, error);
+        },
+        renderError: function (host, slotId, moduleId, error) {
+          errorMsg(host, moduleId + ": " + publicErrorText(error));
+        }
+      });
+      document.body.setAttribute("data-slot-layout", runtime.getLayout().revision);
+      return runtime;
+    } catch (e) {
+      console.warn("slot layout rejected; using legacy render path:", e);
+      return null;
+    }
+  }
+
+  function ensureSlotRuntime() {
+    if (slotRuntimePromise) return slotRuntimePromise;
+    slotRuntimePromise = safeFetch(SLOT_LAYOUT_URL).then(function (layout) {
+      slotRuntime = buildSlotRuntime(layout || SLOT_LAYOUT_FALLBACK);
+      if (!slotRuntime) {
+        // The runtime asset can be absent during a cache race. The direct
+        // renderer below is deliberately kept as a bounded compatibility
+        // fallback; it is not the module-selection path.
+        document.body.setAttribute("data-slot-layout", "legacy-fallback");
+      }
+      return slotRuntime;
+    });
+    return slotRuntimePromise;
+  }
+
+  // Left-column cards remain shell-owned direct renderers. The four
+  // center/right cards are now selected by slot-layout.json through the
+  // allowlisted runtime above.
   function renderCard(name, node, widget) {
     try {
       switch (name) {
-        case "weather":    return renderWeather(node, widget);
-        case "route":      return renderRoute(node, widget);
-        case "calendar":   return renderCalendar(node, widget);
-        case "alerts":     return renderAlerts(node, widget);
-        case "volleyball": return renderVB(node, widget);
-        case "ll_tbd":     return renderTBD(node, widget);
+        case "weather":  return renderWeather(node, widget);
+        case "route":    return renderRoute(node, widget);
+        case "calendar": return renderCalendar(node, widget);
+        case "alerts":   return renderAlerts(node, widget);
       }
     } catch (e) {
       console.warn("render failed:", name, e);
@@ -1250,23 +1375,21 @@
     }
 
     var pairs = [
-      ["weather",    "#card-weather"],
-      ["route",      "#card-route"],
-      ["calendar",   "#card-calendar"],
-      ["alerts",     "#card-alerts"],
-      ["volleyball", "#card-volleyball"],
-      ["ll_tbd",     "#card-ll"],
+      ["weather",  "#card-weather"],
+      ["route",    "#card-route"],
+      ["calendar", "#card-calendar"],
+      ["alerts",   "#card-alerts"]
     ];
     pairs.forEach(function (p) {
       var node = document.querySelector(p[1] + " [data-bind=body]");
       if (node) renderCard(p[0], node, w[p[0]]);
     });
 
-    // media widget renders into BOTH video and slideshow body
-    var videoNode = document.querySelector("#card-video [data-bind=video-body]");
-    var slideNode = document.querySelector("#card-slideshow [data-bind=slideshow-body]");
-    if (videoNode) renderVideo(videoNode, w.media);
-    if (slideNode) renderSlideshow(slideNode, w.media);
+    if (slotRuntime) slotRuntime.update(state);
+    else renderLegacySlotState(state);
+
+    // Fullscreen slideshow and rotation policy stay shell-owned. The LR
+    // module only owns the ordinary slideshow card body.
     renderFullscreenSlideshow(w.media);
     updateDisplayRotation(w.media);
     renderTicker(w);
@@ -1297,7 +1420,9 @@
 
   async function loop() {
     var state = await safeFetch(STATE_URL);
-    if (state) applyState(state);
+    if (!state) return;
+    await ensureSlotRuntime();
+    applyState(state);
   }
 
 
