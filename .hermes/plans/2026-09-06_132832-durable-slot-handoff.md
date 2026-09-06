@@ -126,6 +126,6 @@ From `origin/refactor/pedro-dashboard-slot-runtime` in a new temporary worktree:
 ## Recovery
 
 - Primary file-level recovery: `/home/imac-hermes/projects/pedro_dashboard_backups/pedro_dashboard_pre_slot_runtime_20260906-124042.tgz` and its `.sha256` file.
-- New pre-handoff archive is an additional recovery point.
+- New pre-handoff archive: `/home/imac-hermes/projects/pedro_dashboard_backups/pedro_dashboard_pre_durable_handoff_20260906-133110.tgz` with SHA-256 sidecar at the same path plus `.sha256`.
 - If a Git step fails, leave the live worktree untouched, retain the temporary worktree and backup, and report the exact failing command.
 - Never use `git reset --hard`, `git clean`, or a guessed rollback path as cleanup.

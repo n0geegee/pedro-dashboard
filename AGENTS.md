@@ -74,7 +74,19 @@ A pre-slot implementation backup is available at:
 /home/imac-hermes/projects/pedro_dashboard_backups/pedro_dashboard_pre_slot_runtime_20260906-124042.tgz
 ```
 
-The pre-handoff current-state backup is recorded in the durable handoff execution report and has a SHA-256 sidecar. Preserve backups; do not delete project data merely to clean Git state.
+The exact pre-handoff current-state backup is:
+
+```text
+/home/imac-hermes/projects/pedro_dashboard_backups/pedro_dashboard_pre_durable_handoff_20260906-133110.tgz
+```
+
+Its SHA-256 sidecar is:
+
+```text
+/home/imac-hermes/projects/pedro_dashboard_backups/pedro_dashboard_pre_durable_handoff_20260906-133110.tgz.sha256
+```
+
+Preserve backups; do not delete project data merely to clean Git state.
 
 ## Git boundary
 
