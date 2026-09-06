@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "engine": "slots-v1",
+  "revision": "baseline-birdwatch-1",
+  "slots": {
+    "UL": { "module": "volleyball", "enabled": true },
+    "UR": { "module": "polsat-status", "enabled": true },
+    "LL": { "module": "birdwatch", "enabled": true },
+    "LR": { "module": "photos", "enabled": true }
+  }
+}

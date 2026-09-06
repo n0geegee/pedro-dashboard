@@ -495,7 +495,13 @@ WIDGETS = {
     # daemon, v1.4 — replaces v1.3 push-to-talk). Removed from the mock
     # baseline to stop the 20s state refresher from repainting it as
     # mode=mock every cycle and erasing the KWS partials / wake state.
-    "ll_tbd.json": widget_ll_tbd,
+    #
+    # ll_tbd.json is owned by scripts/refresh-birdwatch-status.py
+    # (LL Birdwatch card, 2026-07-02). Removed from the mock baseline for
+    # the same reason — a generic TBD mock wiping the live Birdwatch
+    # envelope every 20s would create a flicker and race with the live
+    # probe. Refresh-all-state.sh still runs the birdwatch probe after
+    # this mock loop, so the card stays populated.
 }
 
 

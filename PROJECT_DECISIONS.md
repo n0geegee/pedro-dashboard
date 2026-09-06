@@ -22,6 +22,16 @@ This file is the living decision log for `/pedro_dashboard`.
 - **Privacy modes:** `normal`, `private`, `guest`.
 - **Default bind:** `127.0.0.1`, no LAN exposure unless explicitly approved.
 
+## Decision — replaceable slot runtime v1 (2026-09-06)
+
+- The four existing center/right card hosts are replaceable slots: `UL`, `UR`, `LL`, `LR`.
+- Current assignment is `UL=volleyball`, `UR=polsat-status`, `LL=birdwatch`, `LR=photos`.
+- `LL` remains semantically replaceable; Birdwatch is the current module, not the identity of the slot. A future `volleyball-grid` module must be allowlisted and tested before changing only the LL assignment.
+- The implementation is a thin allowlisted vanilla-JS runtime over existing renderers. No React, Shadow DOM, arbitrary dynamic imports, layout rewrite, or shell migration is part of v1.
+- Shell-owned surfaces remain outside modules: grid, left utility column, ticker, clock, skins, fullscreen overlay, and global kiosk lifecycle.
+- The canonical handoff is `docs/architecture/SLOT_RUNTIME.md`; `AGENTS.md` is the start-of-session operator index. The implementation is published on `refactor/pedro-dashboard-slot-runtime`.
+- Historical entries calling LL the Voice Console describe an earlier product contract; they are not the current runtime assignment and are retained for history.
+
 ## Pending decisions before implementation
 
 - Exact port: proposed `17890`.

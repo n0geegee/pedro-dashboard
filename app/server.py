@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Pedro Dashboard — Etap 1 lightweight static MVP server.
 
-Python stdlib only. Bind default 127.0.0.1:17890.
+Python stdlib only. Bind default 127.0.0.1:17888 (PEDRO_PORT env override).
 
 Endpoints:
 - GET /                  -> serves static index.html
@@ -19,22 +19,52 @@ status="error" but never crash the server.
 """
 from __future__ import annotations
 
+# Ensure the project root is on sys.path when this file is invoked as
+# `python3 <project>/app/server.py` (the runtime path used by
+# `scripts/start-dashboard.sh`). Without this, `from app.config import ...`
+# would fail with `ModuleNotFoundError: No module named 'app'` because
+# Python only adds the directory containing the script to sys.path, not
+# the project root. Running as `python3 -m app.server` already does the
+# right thing; this shim keeps both invocations equivalent.
+import sys
+from pathlib import Path
+
+_PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)
+if sys.path[0] != _PROJECT_ROOT:
+    sys.path.insert(0, _PROJECT_ROOT)
+del _PROJECT_ROOT
+
 import json
 import logging
 import os
 import re
 import signal
 import socketserver  # noqa: F401  (kept for stdlib parity with plan)
-import sys
 import threading
 import time
 from datetime import datetime, time as dtime, timezone
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
 from typing import Any, Dict, List, Tuple
 from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
+
+from app.config import (
+    APP_DIR,
+    HOST,
+    LOG_LEVEL,
+    LOGS_DIR,
+    PORT,
+    PRIVACY_MODE,
+    STATE_DIR,
+    STATIC_DIR,
+    VERSION,
+)
+from app.state_store import (
+    empty_envelope as _empty_envelope,
+    is_stale as _is_stale,
+    read_json as _read_json,
+)
 
 WARSAW_TZ = ZoneInfo("Europe/Warsaw")
 _PLACEHOLDER_PL_MATCHDAY = "{{pl_matchday}}"
@@ -44,23 +74,10 @@ _BODY_TAG_RE = re.compile(
 )
 
 # ---------------------------------------------------------------------------
-# Configuration
+# Configuration (see app/config.py for defaults and env overrides)
 # ---------------------------------------------------------------------------
 
-DEFAULT_HOST = "127.0.0.1"
-DEFAULT_PORT = 17890
-APP_DIR = Path(__file__).resolve().parent
-STATIC_DIR = APP_DIR / "static"
-STATE_DIR = APP_DIR / "state"
-LOGS_DIR = APP_DIR / "logs"
-
-# Env overrides (kept simple for Etap 1). Keep MVP loopback-only by default and
-# refuse accidental LAN exposure; explicit LAN support is a future decision.
-_requested_host = os.environ.get("DASHBOARD_HOST", DEFAULT_HOST)
-HOST = _requested_host if _requested_host in ("127.0.0.1", "localhost") else DEFAULT_HOST
-PORT = int(os.environ.get("DASHBOARD_PORT", str(DEFAULT_PORT)))
-PRIVACY_MODE = os.environ.get("DASHBOARD_PRIVACY_MODE", "private")  # MVP default
-
+DEFAULT_HOST = "127.0.0.1"  # backward-compat re-export (used in docstrings)
 SERVER_STARTED_AT = time.time()
 SERVER_STARTED_ISO = datetime.now(timezone.utc).isoformat(timespec="seconds")
 
@@ -72,7 +89,7 @@ LOGS_DIR.mkdir(parents=True, exist_ok=True)
 LOG_PATH = LOGS_DIR / "server.log"
 
 logging.basicConfig(
-    level=os.environ.get("DASHBOARD_LOG_LEVEL", "INFO"),
+    level=LOG_LEVEL,
     format="%(asctime)s %(levelname)s %(message)s",
     handlers=[
         logging.FileHandler(LOG_PATH, encoding="utf-8"),
@@ -110,29 +127,6 @@ STATE_FILES: Dict[str, str] = {
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
-
-
-def _is_stale(updated_at: Any, ttl_seconds: Any) -> bool:
-    """Return True when a state payload is older than its TTL.
-
-    Malformed/missing timestamps are treated as stale if a positive TTL exists.
-    """
-    try:
-        ttl = float(ttl_seconds)
-    except (TypeError, ValueError):
-        return False
-    if ttl <= 0:
-        return False
-    if not isinstance(updated_at, str) or not updated_at:
-        return True
-    try:
-        stamp = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
-    except ValueError:
-        return True
-    if stamp.tzinfo is None:
-        stamp = stamp.replace(tzinfo=timezone.utc)
-    age = (datetime.now(timezone.utc) - stamp.astimezone(timezone.utc)).total_seconds()
-    return age > ttl
 
 
 def _redact_public_text(value: Any) -> str:
@@ -182,32 +176,6 @@ def _privacy_filter_voice(out: Dict[str, Any]) -> Dict[str, Any]:
     out["utterance"] = utterance
     out["result"] = result
     return out
-
-
-def _empty_envelope(name: str, status: str = "empty", error: str = None) -> Dict[str, Any]:
-    return {
-        "status": status,
-        "updated_at": None,
-        "ttl_seconds": None,
-        "privacy_mode": PRIVACY_MODE,
-        "data": {},
-        "error": error,
-        "_widget": name,
-    }
-
-
-def _read_json(path: Path) -> Tuple[bool, Any, str]:
-    """Tolerant JSON read. Returns (ok, payload, error_message)."""
-    if not path.exists():
-        return False, None, f"missing:{path.name}"
-    try:
-        with path.open("r", encoding="utf-8") as f:
-            data = json.load(f)
-    except json.JSONDecodeError as exc:
-        return False, None, f"json_decode_error:{exc.msg}@line{exc.lineno}"
-    except OSError as exc:
-        return False, None, f"io_error:{exc.strerror or exc}"
-    return True, data, None
 
 
 def _load_minimax_usage() -> Dict[str, Any]:
@@ -263,6 +231,11 @@ def _load_minimax_usage() -> Dict[str, Any]:
     }
 
 
+# NOTE: ``load_widget`` enforces the voice-console contract (top-level
+# voice/utterance/activity/result fields) and the rollup ``server`` +
+# ``poland_match_today`` fields the UI consumes. Both pieces are coupled
+# to widget-specific behavior, so the generic helpers live in
+# ``app.state_store`` and the orchestration stays here.
 def load_widget(name: str) -> Dict[str, Any]:
     """Load a single widget state, normalizing to the envelope contract.
 
@@ -274,14 +247,14 @@ def load_widget(name: str) -> Dict[str, Any]:
     """
     fname = STATE_FILES.get(name)
     if fname is None:
-        return _empty_envelope(name, status="error", error=f"unknown_widget:{name}")
+        return _empty_envelope(name, status="error", error=f"unknown_widget:{name}", privacy_mode=PRIVACY_MODE)
     ok, payload, err = _read_json(STATE_DIR / fname)
     if not ok:
         # Distinguish missing (empty) vs broken (error)
         status = "empty" if err and err.startswith("missing:") else "error"
-        return _empty_envelope(name, status=status, error=err)
+        return _empty_envelope(name, status=status, error=err, privacy_mode=PRIVACY_MODE)
     if not isinstance(payload, dict):
-        return _empty_envelope(name, status="error", error="payload_not_object")
+        return _empty_envelope(name, status="error", error="payload_not_object", privacy_mode=PRIVACY_MODE)
 
     raw_status = payload.get("status", "ok")
     status = raw_status if raw_status in ("ok", "stale", "error", "empty", "disabled") else "ok"
@@ -518,7 +491,7 @@ class PedroHandler(BaseHTTPRequestHandler):
                     {
                         "status": "ok",
                         "service": "pedro_dashboard",
-                        "version": "0.1.0",
+                        "version": VERSION,
                         "etap": 1,
                         "updated_at": _now_iso(),
                         "uptime_seconds": int(time.time() - SERVER_STARTED_AT),
@@ -549,6 +522,21 @@ class PedroHandler(BaseHTTPRequestHandler):
                     self._send_json(HTTPStatus.NOT_FOUND, {"error": "not_found"}, send_body=send_body)
                     return
                 ctype = self._guess_content_type(candidate.name)
+                # Cached photo derivatives (WebP, hashed names) get a long
+                # immutable cache header so Chrome keeps the bitmap in its
+                # disk/RAM cache across slides. URL already includes sha1(url)
+                # so any source change yields a new filename — no stale risk.
+                if "/cache/photos/" in path:
+                    self.send_response(HTTPStatus.OK)
+                    self.send_header("Content-Type", ctype)
+                    self.send_header("Content-Length", str(candidate.stat().st_size))
+                    self.send_header("Cache-Control", "public, max-age=86400, immutable")
+                    self.send_header("X-Content-Type-Options", "nosniff")
+                    self.end_headers()
+                    if send_body:
+                        with open(candidate, "rb") as fh:
+                            self.wfile.write(fh.read())
+                    return
                 self._send_file(candidate, ctype, send_body=send_body)
                 return
             if path == "/favicon.ico":
@@ -581,6 +569,12 @@ class PedroHandler(BaseHTTPRequestHandler):
             return "application/json; charset=utf-8"
         if name.endswith(".svg"):
             return "image/svg+xml"
+        if name.endswith(".webp"):
+            return "image/webp"
+        if name.endswith(".jpg") or name.endswith(".jpeg"):
+            return "image/jpeg"
+        if name.endswith(".png"):
+            return "image/png"
         return "application/octet-stream"
 
     # Reject non-GET for now (MVP)

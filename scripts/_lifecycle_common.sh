@@ -90,7 +90,7 @@ PEDRO_GOOGLE_PHOTOS_MAX_IMAGES="${PEDRO_GOOGLE_PHOTOS_MAX_IMAGES:-300}"
 export PEDRO_GOOGLE_PHOTOS_MAX_IMAGES
 # User wants 5 s/photo so the full 220-item album cycles in ~18 min
 # instead of ~165 min. Default in script is 45 s.
-PEDRO_GOOGLE_PHOTOS_SLIDE_SECONDS="${PEDRO_GOOGLE_PHOTOS_SLIDE_SECONDS:-5}"
+PEDRO_GOOGLE_PHOTOS_SLIDE_SECONDS="${PEDRO_GOOGLE_PHOTOS_SLIDE_SECONDS:-3}"
 export PEDRO_GOOGLE_PHOTOS_SLIDE_SECONDS
 
 # --- helpers --------------------------------------------------------------
@@ -132,6 +132,48 @@ pedro_pid_clean_stale() {
   [[ -n "$pidfile" ]] || return 0
   if [[ -f "$pidfile" ]] && [[ "$(pedro_pid_alive "$pidfile")" == "0" ]]; then
     rm -f "$pidfile" 2>/dev/null || true
+  fi
+}
+
+pedro_pid_repair_from_port() {
+  # $1 pid file, $2 host, $3 port.
+  # If pid file is stale (points to dead pid) but the port is listening
+  # and we can identify the listener PID, rewrite the pid file with the
+  # real PID. Idempotent. Never raises.
+  # This is a self-heal for the dashboard.pid / voice_daemon.pid class of
+  # races where a parent shell re-execs and the inherited pidfile becomes
+  # stale while the actual server is still serving on the same port.
+  local pidfile="${1:-}"
+  local host="${2:-127.0.0.1}"
+  local port="${3:-0}"
+  [[ -n "$pidfile" && -n "$port" ]] || { echo 0; return 0; }
+  if [[ "$(pedro_pid_alive "$pidfile")" == "1" ]]; then
+    echo 0
+    return 0
+  fi
+  command -v ss >/dev/null 2>&1 || { echo 0; return 0; }
+  # ss -ltnp output columns: State Recv-Q Send-Q Local Address:Port ...
+  # The "users:((\"cmd\",pid=NNN,...))" trailer is the last column.
+  local listener_pid
+  listener_pid="$(ss -ltnp "sport = :${port}" 2>/dev/null \
+    | awk -v host="$host" -v port="$port" '
+        $0 ~ "LISTEN" {
+          # match the local address column exactly
+          split($4, a, ":")
+          lp = a[length(a)]
+          if (lp == port) {
+            if (match($0, /pid=([0-9]+)/, m)) {
+              print m[1]; exit
+            }
+          }
+        }')"
+  if [[ -n "$listener_pid" ]] && [[ "$listener_pid" =~ ^[0-9]+$ ]] \
+     && kill -0 "$listener_pid" 2>/dev/null; then
+    echo "$listener_pid" > "$pidfile"
+    pedro_log "lifecycle: repaired $pidfile with live pid=$listener_pid (port=${host}:${port})"
+    echo 1
+  else
+    echo 0
   fi
 }
 

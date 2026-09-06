@@ -34,4 +34,7 @@ backups/
 # Runtime media cache (regenerated; do not backup private photo cache)
 app/static/cache/
 
+# Local worker logs (never part of source history)
+run_logs/
+
 .test/

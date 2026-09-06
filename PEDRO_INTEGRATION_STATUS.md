@@ -2,6 +2,19 @@
 
 Status: v1.1 milestone accepted on 2026-06-15. v1.1 is the household readability/polish baseline after Kamila/Jurand feedback. Do not redesign layout casually while connecting sources.
 
+## Slot runtime v1 — implemented and verified 2026-09-06
+
+The existing four card surfaces now run through the durable, allowlisted slot runtime. Current assignments are:
+
+- `UL` → `volleyball`
+- `UR` → `polsat-status`
+- `LL` → `birdwatch`
+- `LR` → `photos`
+
+The slot IDs are replaceable; `LL` does not permanently mean Birdwatch or the historical Voice Console. The runtime/config/test files are `app/static/slot-runtime.js`, `app/static/slot-layout.json`, and `tests/test_slot_runtime.js`, with host metadata/load order in `app/static/index.html` and adapters in `app/static/app.js`. Shell-owned layout, left column, ticker, clock, skins, and fullscreen overlay stay outside the modules.
+
+Durable handoff and verification: [`docs/architecture/SLOT_RUNTIME.md`](docs/architecture/SLOT_RUNTIME.md), [`AGENTS.md`](AGENTS.md), branch `refactor/pedro-dashboard-slot-runtime`. The v1 runtime contract passed 4 Node tests; the project suite passed 42 Python tests; a clean remote checkout repeated both.
+
 Release notes:
 - `docs/releases/PEDRO_DASHBOARD_V1.0.md`
 - `docs/releases/PEDRO_DASHBOARD_V1.1.md`

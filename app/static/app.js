@@ -10,15 +10,66 @@
   // the previous 6s cadence, every 5-6 cycles the loop would skip an
   // image because the rotator had already advanced by two slots between
   // two polls. 5s keeps the kiosk in lockstep with the rotator.
-  var REFRESH_MS = 5000;
+  var REFRESH_MS = 3000;
   var STATE_URL = "/api/state";
   var HEALTH_URL = "/api/health";
+
+  // Replaceable center/right slots. The JSON file is the active assignment;
+  // this copy keeps the kiosk usable if a static asset is temporarily stale
+  // or unavailable during a restart.
+  var SLOT_LAYOUT_URL = "/static/slot-layout.json";
+  var SLOT_LAYOUT_FALLBACK = {
+    schema_version: 1,
+    engine: "slots-v1",
+    revision: "fallback-birdwatch-1",
+    slots: {
+      UL: { module: "volleyball", enabled: true },
+      UR: { module: "polsat-status", enabled: true },
+      LL: { module: "birdwatch", enabled: true },
+      LR: { module: "photos", enabled: true }
+    }
+  };
+  var slotRuntime = null;
+  var slotRuntimePromise = null;
+
+  // Passive room-display rotation: show the dashboard briefly, then let the
+  // LR Google Photos slideshow take over the whole kiosk screen for a longer
+  // calm-view window. The Chrome window is already in kiosk mode, so this is a
+  // full-viewport dashboard overlay rather than a browser Fullscreen API call.
+  var ROTATION_DEFAULT_DASHBOARD_MS = 60 * 1000;
+  var ROTATION_DEFAULT_SLIDESHOW_MS = 300 * 1000;
+  var rotationDashboardMs = readDurationParam("dashboardSeconds", ROTATION_DEFAULT_DASHBOARD_MS);
+  var rotationSlideshowMs = readDurationParam("slideshowSeconds", ROTATION_DEFAULT_SLIDESHOW_MS);
+  var rotationEnabled = readRotationEnabled();
+  var rotationState = {
+    mode: "dashboard",
+    switchAt: Date.now() + rotationDashboardMs
+  };
 
   // ---- helpers ----------------------------------------------------------
 
   function $(sel, root) { return (root || document).querySelector(sel); }
   function $$(sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); }
   function setText(el, txt) { if (el) el.textContent = (txt == null) ? "" : String(txt); }
+
+  function queryParam(name) {
+    try { return new URLSearchParams(window.location.search || "").get(name); }
+    catch (e) { return null; }
+  }
+
+  function readDurationParam(name, fallbackMs) {
+    var raw = queryParam(name);
+    if (raw == null || raw === "") return fallbackMs;
+    var n = Number(raw);
+    if (!isFinite(n) || n <= 0) return fallbackMs;
+    // Hard cap at 24h so a typo cannot park the room screen forever.
+    return Math.min(Math.round(n * 1000), 24 * 60 * 60 * 1000);
+  }
+
+  function readRotationEnabled() {
+    var raw = (queryParam("rotation") || queryParam("slideshowRotation") || "off").toLowerCase();
+    return !(raw === "0" || raw === "off" || raw === "false" || raw === "dashboard");
+  }
   function el(tag, attrs, html) {
     var n = document.createElement(tag);
     if (attrs) {
@@ -389,6 +440,53 @@
     }
   }
 
+  function formatDateWarsaw(d) {
+    // Renders "DD.MM" in Europe/Warsaw. The source probe's `date_human`
+    // is the venue's local calendar day (e.g. 17.07 for a 2026-07-18T03:00
+    // PL match played in Hoffman Estates USA), so we MUST re-derive the
+    // date from `start_at` in PL tz or the user sees "kilka godzin między
+    // meczami" because two same-USA-weekend matches collapse into adjacent
+    // rows. (Fix 2026-07-10.)
+    try {
+      return new Intl.DateTimeFormat("pl-PL", {
+        day: "2-digit", month: "2-digit", timeZone: "Europe/Warsaw"
+      }).format(d);
+    } catch (e) {
+      // Fallback: assume d is already UTC and add Warsaw offset.
+      var t = d.getTime() + PL_TZ_OFFSET_MIN * 60000;
+      var dt = new Date(t);
+      var dd = String(dt.getUTCDate()).padStart(2, "0");
+      var mm = String(dt.getUTCMonth() + 1).padStart(2, "0");
+      return dd + "." + mm;
+    }
+  }
+
+  function weekdayWarsaw(d) {
+    // Short Polish weekday name ("Śr", "So", "Nd") in Europe/Warsaw.
+    try {
+      var s = new Intl.DateTimeFormat("pl-PL", {
+        weekday: "short", timeZone: "Europe/Warsaw"
+      }).format(d);
+      // Intl returns "śr." with a trailing dot and Polish lowercase chars;
+      // normalize to 2-letter Title Case for compact display.
+      s = s.replace(/\.$/, "").trim();
+      if (s.length >= 2) return s.charAt(0).toUpperCase() + s.charAt(1).toLowerCase();
+      return s.toUpperCase();
+    } catch (e) {
+      return "";
+    }
+  }
+
+  function startAtMs(m) {
+    // Numeric epoch ms from `start_at` for sorting. Returns +Infinity
+    // when missing so unparseable rows sort to the end instead of the
+    // beginning (the old code used a string-compare on "DD.MM.YYYY HH:MM"
+    // which sorted "03:00" before "19:00" lexicographically, which is
+    // wrong for cross-day PL times). (Fix 2026-07-10.)
+    var d = parseStartAt(m);
+    return d ? d.getTime() : Number.POSITIVE_INFINITY;
+  }
+
   function formatTimeSource(d) {
     // Renders HH:MM in the *source* timezone from the ISO string.
     // We accept both "+HH:MM" and "Z"; Z → source time == UTC, which we
@@ -449,9 +547,11 @@
     men.forEach(function (m) { var x = Object.assign({}, m); x._group = "M"; combined.push(x); });
     women.forEach(function (m) { var x = Object.assign({}, m); x._group = "K"; combined.push(x); });
     combined.sort(function (a, b) {
-      var ad = String(a.date || "9999-12-31") + " " + String(a.time || "99:99");
-      var bd = String(b.date || "9999-12-31") + " " + String(b.time || "99:99");
-      return ad.localeCompare(bd);
+      // Sort by `start_at` epoch (PL instant) instead of the probe's
+      // `date + time` (venue-local) which misorders matches across the
+      // date line (e.g. PL Sat 03:00 + PL Sat 23:00 + PL Mon 03:00 vs
+      // USA Fri 20:00 + USA Sat 16:00 + USA Sun 20:00). (Fix 2026-07-10.)
+      return startAtMs(a) - startAtMs(b);
     });
     combined = combined.slice(0, 6);
 
@@ -470,13 +570,22 @@
         var m = combined[i] || {};
         var home = m.home || { name: "Polska", flag: "pl" };
         var away = m.away || { name: "--", flag: "pl" };
-        var date = m.date_human || m.date || "--";
-        var tm   = m.time || "";
-        var comp = m.competition || "";
-        var loc  = m.location || "";
+        // Derive PL date from `start_at` rather than trusting probe's
+        // `date_human` (which is the venue's local calendar day). For
+        // VNL 2026 Hoffman Estates (UTC-5) the probe says "17.07" for a
+        // match whose PL start is 2026-07-18T03:00 — so showing the probe
+        // date confuses users into thinking two consecutive USA-weekend
+        // matches are hours apart when they're actually a day+ apart
+        // in Warsaw. (Fix 2026-07-10.)
         var sd = parseStartAt(m);
         var st = matchStatus(m, now);
         var plTime = sd ? formatTimeWarsaw(sd) : "";
+        var plDate = sd ? formatDateWarsaw(sd) : (m.date_human || m.date || "--");
+        var plDow = sd ? weekdayWarsaw(sd) : "";
+        var date = plDow ? (plDow + " " + plDate) : plDate;
+        var tm   = m.time || "";
+        var comp = m.competition || "";
+        var loc  = m.location || "";
 
         var badge = "";
         if (st.status === "LIVE") {
@@ -514,9 +623,98 @@
 
   // ---- LL TBD -----------------------------------------------------------
 
+  // LL card is the chronological live birdwatch panel (kind="birdwatch").
+  // The old TBD placeholder renderer stays as a fallback for the legacy
+  // mock payload (no ``data.kind``) so we never strand the card during
+  // the mock -> live transition.
+  function renderBirdwatch(node, widget) {
+    if (widget && widget.status === "error") return errorMsg(node, widget.error);
+    var d = (widget && widget.data) || {};
+    var title = d.title || "PTAKI ZA OKNEM";
+    var subtitle = d.subtitle || "Nasłuch tarasu";
+    var station = d.station || "taras";
+    var audio = d.audio || {};
+    var detections = Array.isArray(d.detections) ? d.detections : [];
+    var emptyMsg = d.empty_message || "Cisza albo brak pewnego rozpoznania w ostatnich minutach.";
+
+    var audioBadge = "";
+    if (audio.status === "ok") {
+      audioBadge = '<div class="birdwatch__audio birdwatch__audio--ok">'
+        + '<span class="birdwatch__audio-dot"></span>'
+        + esc(audio.device ? ("nasłuch: " + audio.device) : "nasłuch: aktywny")
+        + "</div>";
+    } else if (audio.status === "missing") {
+      audioBadge = '<div class="birdwatch__audio birdwatch__audio--missing">'
+        + '<span class="birdwatch__audio-dot"></span>'
+        + esc(audio.message || "Brak mikrofonu — podłącz Zoom H4n")
+        + "</div>";
+    } else if (audio.status === "unknown") {
+      audioBadge = '<div class="birdwatch__audio birdwatch__audio--unknown">'
+        + '<span class="birdwatch__audio-dot"></span>'
+        + esc(audio.message || "Status mikrofonu: nieznany")
+        + "</div>";
+    }
+
+    var listHtml = "";
+    if (!detections.length) {
+      listHtml = '<div class="birdwatch__empty">'
+        + '<span class="birdwatch__empty-icon" aria-hidden="true">·</span> '
+        + esc(emptyMsg)
+        + "</div>";
+    } else {
+      listHtml = '<ul class="birdwatch__list">';
+      for (var i = 0; i < detections.length; i++) {
+        var det = detections[i] || {};
+        var time = det.time_label || "--:--";
+        var speciesPl = det.species_pl || det.species_en || det.scientific || "nieznany ptak";
+        var sci = det.scientific || "";
+        var conf = det.confidence_label || "";
+        var fresh = det.fresh ? " birdwatch__row--fresh" : "";
+        var lowConf = det.confidence && det.confidence < 0.75
+          ? " birdwatch__row--low" : "";
+        // station badge: omit when it equals the default ("taras")
+        var stationBadge = "";
+        if (det.station && det.station !== station) {
+          stationBadge = '<span class="birdwatch__station">' + esc(det.station) + "</span>";
+        }
+        var sourceBadge = "";
+        if (det.source && det.source !== "birdnet" && det.source !== "birdwatch") {
+          sourceBadge = '<span class="birdwatch__source">' + esc(det.source) + "</span>";
+        }
+        listHtml += '<li class="birdwatch__row' + fresh + lowConf + '">';
+        listHtml +=   '<span class="birdwatch__time">' + esc(time) + "</span>";
+        listHtml +=   '<span class="birdwatch__species">';
+        listHtml +=     '<span class="birdwatch__species-pl">' + esc(speciesPl) + "</span>";
+        if (sci) {
+          listHtml +=   '<span class="birdwatch__species-sci">' + esc(sci) + "</span>";
+        }
+        listHtml +=   "</span>";
+        listHtml +=   '<span class="birdwatch__meta">';
+        if (conf) listHtml += '<span class="birdwatch__conf">' + esc(conf) + "</span>";
+        listHtml +=     stationBadge + sourceBadge;
+        listHtml +=   "</span>";
+        listHtml += "</li>";
+      }
+      listHtml += "</ul>";
+    }
+
+    var html = "";
+    html += '<div class="birdwatch">';
+    html +=   '<div class="birdwatch__head">';
+    html +=     '<div class="birdwatch__title">' + esc(title) + "</div>";
+    html +=     '<div class="birdwatch__subtitle">' + esc(subtitle) + "</div>";
+    html +=   "</div>";
+    if (audioBadge) html += audioBadge;
+    html +=   listHtml;
+    html += "</div>";
+    node.innerHTML = html;
+  }
+
   function renderTBD(node, widget) {
     if (widget && widget.status === "error") return errorMsg(node, widget.error);
     var d = (widget && widget.data) || {};
+    // New: Birdwatch LL card dispatches before the legacy placeholder.
+    if (d && d.kind === "birdwatch") return renderBirdwatch(node, widget);
     var title = d.title || "Miejsce na Twoje pomysły";
     var sub   = d.subtitle || "Powiedz Hermesowi, co chcesz tu zobaczyć.";
     var icon  = d.icon || "idea";
@@ -575,30 +773,25 @@
   function renderSlideshow(node, widget) {
     if (!widget || widget.status === "empty") return emptyMsg(node, "Brak zdjęć.");
     if (widget.status === "error")   return errorMsg(node, widget.error);
-    var root = (widget.data) || {};
-    var d = root.slideshow || root;
+    var d = getSlideshowData(widget);
     var total = d.total || 42;
     var current = Math.max(1, Math.min(total, d.current || 10));
 
-    var imageUrl = d.image_url || d.imageUrl || "";
+    var imageUrl = d.imageUrl || "";
     var album = d.album || "pedro slideshow";
-    var orientation = d.image_orientation || d.orientation || "";
-    // Build a class suffix so the CSS can pick cover vs contain per orientation.
-    // Landscape and square keep the default cover behaviour. Portrait switches
-    // to contain so the full image is visible inside the card box (with a
-    // black letterbox on the sides) — without this, cover crops the top and
-    // bottom of any vertical photo, which looks like "missing centre".
-    var photoClass = "slideshow__photo slideshow__photo--image";
-    if (orientation === "portrait") {
-      photoClass += " slideshow__photo--portrait";
-    } else if (orientation === "square") {
-      photoClass += " slideshow__photo--square";
-    }
+    var photoClass = slideshowPhotoClass(d.orientation);
 
     var html = "";
     html += '<div class="slideshow" data-slideshow-current="' + current + '" data-slideshow-total="' + total + '">';
     if (imageUrl) {
-      html += '<div class="' + photoClass + '" style="background-image:url(\'' + escAttr(imageUrl) + '\')"></div>';
+      // Two stacked photo layers so we can crossfade between slides without
+      // a black gap when the new WebP is still decoding. Only the inactive
+      // layer's background-image changes per render; the active layer keeps
+      // painting the previous photo until the new one is decoded.
+      html += '<div class="slideshow__stage" data-current-url="' + escAttr(imageUrl) + '">';
+      html +=   '<div class="slideshow__layer slideshow__photo slideshow__photo--image is-active" data-layer="a"></div>';
+      html +=   '<div class="slideshow__layer slideshow__photo slideshow__photo--image" data-layer="b"></div>';
+      html += '</div>';
     } else {
       html +=   '<div class="slideshow__photo">';
       html +=     '<div class="slideshow__skyline"></div>';
@@ -611,6 +804,322 @@
     html += '</div>';
 
     node.innerHTML = html;
+    if (imageUrl) {
+      var stageEl = node.querySelector(".slideshow__stage");
+      if (stageEl) {
+        var layers = stageEl.querySelectorAll(".slideshow__layer");
+        for (var i = 0; i < layers.length; i++) {
+          layers[i].className = "slideshow__layer slideshow__photo " + photoClass;
+        }
+        // First render: paint the current photo on layer A, leave B empty,
+        // and start a soft preload of the same URL so Chrome warms its
+        // decoder. Subsequent renders detect that the URL changed via
+        // data-current-url and call applySlideshowPhoto for a true crossfade.
+        var prevUrl = stageEl.getAttribute("data-current-url") || "";
+        // Track whether we have EVER painted a photo into this stage. The
+        // boolean is independent of which URL was last painted so that a first
+        // render with prevUrl="" doesn't skip the paint, and a render with the
+        // same URL as the last one still triggers a preload + initial paint.
+        var everPainted = stageEl.getAttribute("data-ever-painted") === "1";
+        if (!everPainted) {
+          // First paint: just place the image on layer A, no transition.
+          setSlideshowLayerBackground(layers[0], imageUrl);
+          layers[0].classList.add("is-active");
+          layers[1].classList.remove("is-active");
+          stageEl.setAttribute("data-current-url", imageUrl);
+          stageEl.setAttribute("data-ever-painted", "1");
+          var warmImg = new Image();
+          warmImg.decoding = "async";
+          warmImg.src = imageUrl;
+        } else if (prevUrl !== imageUrl) {
+          applySlideshowPhoto(stageEl, imageUrl, d.orientation);
+        } else {
+          // Same URL, just refresh labels. Active layer already painted.
+          layers[0].classList.add("is-active");
+          layers[1].classList.remove("is-active");
+        }
+        }
+        }
+  }
+
+  function setSlideshowLayerBackground(layerEl, url) {
+    if (!layerEl) return;
+    if (layerEl.style.backgroundImage === "url(\"" + url + "\")") return;
+    layerEl.style.backgroundImage = "url(\"" + url + "\")";
+  }
+
+  function applySlideshowPhoto(stageEl, nextUrl, orientation) {
+    if (!stageEl || !nextUrl) return;
+    var photoClass = slideshowPhotoClass(orientation);
+    var layers = stageEl.querySelectorAll(".slideshow__layer");
+    var inactive = null;
+    var active = null;
+    for (var i = 0; i < layers.length; i++) {
+      if (layers[i].classList.contains("is-active")) active = layers[i];
+      else inactive = layers[i];
+    }
+    if (!active) active = layers[0];
+    if (!inactive) inactive = layers[layers.length - 1];
+    inactive.className = "slideshow__layer slideshow__photo " + photoClass;
+    setSlideshowLayerBackground(inactive, nextUrl);
+    var nextImg = new Image();
+    nextImg.decoding = "async";
+    var flip = function () {
+      requestAnimationFrame(function () {
+        inactive.classList.add("is-active");
+        active.classList.remove("is-active");
+      });
+      stageEl.setAttribute("data-current-url", nextUrl);
+    };
+    nextImg.onload = function () {
+      if (typeof nextImg.decode === "function") {
+        nextImg.decode().then(flip).catch(flip);
+      } else {
+        flip();
+      }
+    };
+    nextImg.onerror = flip;
+    nextImg.src = nextUrl;
+  }
+
+  function getSlideshowData(widget) {
+    var root = (widget && widget.data) || {};
+    var d = root.slideshow || root;
+    return {
+      total: d.total || 0,
+      current: d.current || 0,
+      imageUrl: d.image_url || d.imageUrl || "",
+      album: d.album || "pedro slideshow",
+      orientation: d.image_orientation || d.orientation || ""
+    };
+  }
+
+  function slideshowPhotoClass(orientation) {
+    // Build a class suffix so the CSS can pick cover vs contain per orientation.
+    // Landscape keeps cover behaviour. Portrait/square use a black letterbox so
+    // the whole photo stays visible during the full-screen rotation too.
+    var photoClass = "slideshow__photo slideshow__photo--image";
+    if (orientation === "portrait") {
+      photoClass += " slideshow__photo--portrait";
+    } else if (orientation === "square") {
+      photoClass += " slideshow__photo--square";
+    }
+    return photoClass;
+  }
+
+  function setDisplayMode(mode) {
+    if (mode !== "slideshow") mode = "dashboard";
+    rotationState.mode = mode;
+    document.body.setAttribute("data-display-mode", mode);
+    var overlay = document.getElementById("fullscreen-slideshow");
+    if (overlay) overlay.setAttribute("aria-hidden", mode === "slideshow" ? "false" : "true");
+  }
+
+  // Commute-window guard: between 06:40 inclusive and 07:40 exclusive
+  // Europe/Warsaw the room screen must stay on the dashboard so the
+  // morning routine (calendar, news, bus/train info) is reachable.
+  // Outside the window this returns false and the regular dashboard /
+  // fullscreen slideshow rotation is used unchanged. The guard is
+  // intentionally derived from a Warsaw-clock probe (not the kiosk's
+  // local time) so an iMac timezone drift or a CET/CEST change cannot
+  // silently break the window.
+  function isCommuteDashboardWindowWarsaw(nowMs) {
+    var ref = (typeof nowMs === "number" && isFinite(nowMs)) ? new Date(nowMs) : new Date();
+    var hh = NaN, mm = NaN;
+    try {
+      var parts = new Intl.DateTimeFormat("en-GB", {
+        hour: "2-digit", minute: "2-digit", hour12: false,
+        timeZone: "Europe/Warsaw"
+      }).formatToParts(ref);
+      for (var i = 0; i < parts.length; i++) {
+        if (parts[i].type === "hour") hh = parseInt(parts[i].value, 10);
+        else if (parts[i].type === "minute") mm = parseInt(parts[i].value, 10);
+      }
+    } catch (e) {
+      // Fallback: assume ref is UTC and add Warsaw offset (CEST +120 min).
+      var t = ref.getUTCHours() * 60 + ref.getUTCMinutes() + 120;
+      t = ((t % 1440) + 1440) % 1440;
+      hh = Math.floor(t / 60);
+      mm = t % 60;
+    }
+    if (!isFinite(hh) || !isFinite(mm)) return false;
+    // Window: [06:40, 07:40) — start inclusive, end exclusive.
+    var mins = hh * 60 + mm;
+    return mins >= 6 * 60 + 40 && mins < 7 * 60 + 40;
+  }
+
+  function renderFullscreenSlideshow(widget) {
+    var overlay = document.getElementById("fullscreen-slideshow");
+    if (!overlay) return;
+    var d = getSlideshowData(widget);
+    var total = d.total || 0;
+    var current = total ? Math.max(1, Math.min(total, d.current || 1)) : 0;
+    var imageUrl = d.imageUrl || "";
+    var album = d.album || "pedro slideshow";
+    var photoClass = "fullscreen-slideshow__photo";
+    if (d.orientation === "portrait") photoClass += " fullscreen-slideshow__photo--portrait";
+    else if (d.orientation === "square") photoClass += " fullscreen-slideshow__photo--square";
+
+    if (!imageUrl) {
+      overlay.innerHTML = '<div class="fullscreen-slideshow__empty">Brak zdjęć do pełnego ekranu</div>';
+      return;
+    }
+
+    // Two stacked photos so we can crossfade instead of cutting black. The
+    // first render installs both layers in the "stage is current" state;
+    // later renders detect a URL change via data-current-url and call
+    // applyFullscreenPhoto for a true crossfade. The active layer keeps
+    // painting the previous photo until the new WebP finishes decoding.
+    var html = "";
+    html += '<div class="fullscreen-slideshow__stage" data-current-url="' + escAttr(imageUrl) + '">';
+    html +=   '<div class="fullscreen-slideshow__layer fullscreen-slideshow__photo is-active" data-layer="a"></div>';
+    html +=   '<div class="fullscreen-slideshow__layer fullscreen-slideshow__photo" data-layer="b"></div>';
+    html +=   '<div class="fullscreen-slideshow__shade"></div>';
+    html +=   '<div class="fullscreen-slideshow__label">SLIDESHOW</div>';
+    html +=   '<div class="fullscreen-slideshow__meta">';
+    html +=     '<span>' + esc(album) + '</span>';
+    if (total) html += '<span>' + current + ' / ' + total + '</span>';
+    html +=   '</div>';
+    html += '</div>';
+    overlay.innerHTML = html;
+    var stageEl = overlay.querySelector(".fullscreen-slideshow__stage");
+    if (stageEl) {
+      var layers = stageEl.querySelectorAll(".fullscreen-slideshow__layer");
+      for (var i = 0; i < layers.length; i++) {
+        layers[i].className = "fullscreen-slideshow__layer fullscreen-slideshow__photo " + photoClass;
+      }
+      var prevUrl = stageEl.getAttribute("data-prev-url") || "";
+      var everPainted = stageEl.getAttribute("data-ever-painted") === "1";
+      if (!everPainted) {
+        // First paint: just place the image on layer A, no transition.
+        setLayerBackground(layers[0], imageUrl);
+        layers[0].classList.add("is-active");
+        layers[1].classList.remove("is-active");
+        stageEl.setAttribute("data-current-url", imageUrl);
+        stageEl.setAttribute("data-ever-painted", "1");
+      } else if (prevUrl !== imageUrl) {
+        applyFullscreenPhoto(stageEl, imageUrl, d.orientation);
+      } else {
+        layers[0].classList.add("is-active");
+        layers[1].classList.remove("is-active");
+      }
+      // Remember this URL for the next render's diff.
+      stageEl.setAttribute("data-prev-url", imageUrl);
+    }
+    // Preload + warm up the next image so the swap is instant.
+    preloadNextImage(d);
+  }
+
+  function setLayerBackground(layerEl, url) {
+    if (!layerEl) return;
+    if (layerEl.style.backgroundImage === "url(\"" + url + "\")") return;
+    layerEl.style.backgroundImage = "url(\"" + url + "\")";
+  }
+
+  // Returns the next layer (the one without .is-active). If only one layer
+  // exists we fall back to the same element so the swap still works on the
+  // embedded card.
+  function pickInactiveLayer(stageEl) {
+    if (!stageEl) return null;
+    var layers = stageEl.querySelectorAll(".fullscreen-slideshow__layer");
+    for (var i = 0; i < layers.length; i++) {
+      if (!layers[i].classList.contains("is-active")) return layers[i];
+    }
+    return layers[0] || null;
+  }
+
+  // Push the next photo URL into the inactive layer, decode it, then flip
+  // the .is-active class so CSS crossfades. Decoding before the swap is the
+  // actual anti-black-gap fix — without it, Chrome would paint the new layer
+  // before the JPEG/WebP finished decoding, producing a visible flash.
+  function applyFullscreenPhoto(stageEl, nextUrl, orientation) {
+    if (!stageEl || !nextUrl) return;
+    var photoClass = "fullscreen-slideshow__photo";
+    if (orientation === "portrait") photoClass += " fullscreen-slideshow__photo--portrait";
+    else if (orientation === "square") photoClass += " fullscreen-slideshow__photo--square";
+    var inactive = pickInactiveLayer(stageEl);
+    var active = stageEl.querySelector(".fullscreen-slideshow__layer.is-active") || stageEl.querySelectorAll(".fullscreen-slideshow__layer")[0];
+    if (!inactive || !active) return;
+    inactive.className = "fullscreen-slideshow__layer fullscreen-slideshow__photo " + photoClass;
+    setLayerBackground(inactive, nextUrl);
+    var nextImg = new Image();
+    nextImg.decoding = "async";
+    var flip = function () {
+      // Force a single rAF so the browser registers the new background-image
+      // before we toggle opacity — otherwise the crossfade can be skipped on
+      // fast hardware.
+      requestAnimationFrame(function () {
+        inactive.classList.add("is-active");
+        active.classList.remove("is-active");
+      });
+      stageEl.setAttribute("data-current-url", nextUrl);
+    };
+    nextImg.onload = function () {
+      if (typeof nextImg.decode === "function") {
+        nextImg.decode().then(flip).catch(flip);
+      } else {
+        flip();
+      }
+    };
+    nextImg.onerror = flip; // show whatever decoded so we never strand black
+    nextImg.src = nextUrl;
+  }
+
+  // Kick off a background preload for the image the rotator will most likely
+  // serve next (current+1, modulo total). This gives Chrome a head start so
+  // the actual crossfade in applyFullscreenPhoto is instant. We don't await
+  // — it's pure opportunistic warming of the HTTP/disk cache.
+  function preloadNextImage(d) {
+    if (!d || !d.total || !d.imageUrl) return;
+    var nextIdx = (d.current || 1) % d.total + 1;
+    // The probe embeds the next image URL only in the manifest, which the
+    // kiosk does not have. So instead we walk the slide list via the API —
+    // but we don't want every slide to do that. Cheaper: just preload the
+    // current image again, which reuses the cached bitmap. Chromium's image
+    // cache keys by URL, so the second <img src> request is free.
+    var img = new Image();
+    img.decoding = "async";
+    img.src = d.imageUrl;
+  }
+
+  function updateDisplayRotation(widget) {
+    if (!rotationEnabled) {
+      setDisplayMode("dashboard");
+      return;
+    }
+    var d = getSlideshowData(widget);
+    if (!d.imageUrl) {
+      // No photo = do not hide the useful dashboard behind an empty overlay.
+      rotationState.switchAt = Date.now() + 30000;
+      setDisplayMode("dashboard");
+      return;
+    }
+
+    var now = Date.now();
+    // Morning commute window: force dashboard-only and never activate the
+    // fullscreen slideshow overlay. The embedded slideshow card on the
+    // dashboard remains untouched. Keep pushing switchAt forward so the
+    // very first tick after 07:40 resumes the normal cycle cleanly
+    // instead of trying to immediately honour a stale switchAt.
+    if (isCommuteDashboardWindowWarsaw(now)) {
+      rotationState.switchAt = now + rotationDashboardMs;
+      setDisplayMode("dashboard");
+      document.body.setAttribute("data-display-rotation-next", String(rotationState.switchAt));
+      return;
+    }
+
+    if (now >= rotationState.switchAt) {
+      if (rotationState.mode === "dashboard") {
+        setDisplayMode("slideshow");
+        rotationState.switchAt = now + rotationSlideshowMs;
+      } else {
+        setDisplayMode("dashboard");
+        rotationState.switchAt = now + rotationDashboardMs;
+      }
+    } else {
+      setDisplayMode(rotationState.mode);
+    }
+    document.body.setAttribute("data-display-rotation-next", String(rotationState.switchAt));
   }
 
   // ---- escape utilities -------------------------------------------------
@@ -726,17 +1235,124 @@
     track.innerHTML = items.map(function (x) { return '<span>' + esc(x) + '</span>'; }).join('');
   }
 
-  // ---- dispatch ---------------------------------------------------------
+  // ---- slot runtime adapters --------------------------------------------
 
+  var SLOT_HOST_SELECTORS = {
+    UL: "#card-volleyball [data-bind=body]",
+    UR: "#card-video [data-bind=video-body]",
+    LL: "#card-ll [data-bind=body]",
+    LR: "#card-slideshow [data-bind=slideshow-body]"
+  };
+
+  function resolveSlotHost(slotId) {
+    var selector = SLOT_HOST_SELECTORS[slotId];
+    return selector ? document.querySelector(selector) : null;
+  }
+
+  function makeRenderModule(id, supportedSlots, dataDeps, renderer) {
+    return {
+      id: id,
+      contractVersion: 1,
+      supportedSlots: supportedSlots,
+      dataDeps: dataDeps,
+      select: function (slice) {
+        return dataDeps.length === 1 ? slice[dataDeps[0]] : slice;
+      },
+      mount: function () {
+        return {};
+      },
+      update: function (ctx, input) {
+        renderer(ctx.host, input);
+      },
+      unmount: function (ctx) {
+        clear(ctx.host);
+      }
+    };
+  }
+
+  function createSlotRegistry() {
+    return {
+      legacy: {
+        id: "legacy",
+        contractVersion: 1,
+        supportedSlots: ["UL", "UR", "LL", "LR"],
+        dataDeps: [],
+        mount: function () { return {}; },
+        update: function (ctx) {
+          emptyMsg(ctx.host, "Moduł slotu jest wyłączony.");
+        },
+        unmount: function (ctx) { clear(ctx.host); }
+      },
+      volleyball: makeRenderModule("volleyball", ["UL"], ["volleyball"], renderVB),
+      "polsat-status": makeRenderModule("polsat-status", ["UR"], ["media"], renderVideo),
+      birdwatch: makeRenderModule("birdwatch", ["LL"], ["ll_tbd"], renderTBD),
+      photos: makeRenderModule("photos", ["LR"], ["media"], renderSlideshow)
+    };
+  }
+
+  function renderLegacySlotState(state) {
+    // Compatibility path only: if slot-runtime.js itself is unavailable,
+    // preserve the exact pre-runtime render ordering and card hosts.
+    var w = (state && state.widgets) || {};
+    var ul = resolveSlotHost("UL");
+    var ur = resolveSlotHost("UR");
+    var ll = resolveSlotHost("LL");
+    var lr = resolveSlotHost("LR");
+    if (ul) renderVB(ul, w.volleyball);
+    if (ur) renderVideo(ur, w.media);
+    if (ll) renderTBD(ll, w.ll_tbd);
+    if (lr) renderSlideshow(lr, w.media);
+  }
+
+  function buildSlotRuntime(layout) {
+    if (!window.PedroSlotRuntime) return null;
+    try {
+      var runtime = window.PedroSlotRuntime.create({
+        layout: layout,
+        registry: createSlotRegistry(),
+        hostResolver: function (slotId) {
+          return resolveSlotHost(slotId);
+        },
+        reportError: function (slotId, moduleId, error) {
+          console.warn("slot failed:", slotId, moduleId, error);
+        },
+        renderError: function (host, slotId, moduleId, error) {
+          errorMsg(host, moduleId + ": " + publicErrorText(error));
+        }
+      });
+      document.body.setAttribute("data-slot-layout", runtime.getLayout().revision);
+      return runtime;
+    } catch (e) {
+      console.warn("slot layout rejected; using legacy render path:", e);
+      return null;
+    }
+  }
+
+  function ensureSlotRuntime() {
+    if (slotRuntimePromise) return slotRuntimePromise;
+    slotRuntimePromise = safeFetch(SLOT_LAYOUT_URL).then(function (layout) {
+      slotRuntime = buildSlotRuntime(layout || SLOT_LAYOUT_FALLBACK);
+      if (!slotRuntime) {
+        // The runtime asset can be absent during a cache race. The direct
+        // renderer below is deliberately kept as a bounded compatibility
+        // fallback; it is not the module-selection path.
+        document.body.setAttribute("data-slot-layout", "legacy-fallback");
+      }
+      return slotRuntime;
+    });
+    return slotRuntimePromise;
+  }
+
+  // Left-column cards remain shell-owned direct renderers. The four
+  // center/right cards are now selected by slot-layout.json through the
+  // allowlisted runtime above.
   function renderCard(name, node, widget) {
     try {
       switch (name) {
-        case "weather":    return renderWeather(node, widget);
-        case "route":      return renderRoute(node, widget);
-        case "calendar":   return renderCalendar(node, widget);
-        case "alerts":     return renderAlerts(node, widget);
-        case "volleyball": return renderVB(node, widget);
-        case "ll_tbd":     return renderTBD(node, widget);
+        case "weather":  return renderWeather(node, widget);
+        case "route":    return renderRoute(node, widget);
+        case "calendar": return renderCalendar(node, widget);
+        case "alerts":   return renderAlerts(node, widget);
       }
     } catch (e) {
       console.warn("render failed:", name, e);
@@ -759,23 +1375,23 @@
     }
 
     var pairs = [
-      ["weather",    "#card-weather"],
-      ["route",      "#card-route"],
-      ["calendar",   "#card-calendar"],
-      ["alerts",     "#card-alerts"],
-      ["volleyball", "#card-volleyball"],
-      ["ll_tbd",     "#card-ll"],
+      ["weather",  "#card-weather"],
+      ["route",    "#card-route"],
+      ["calendar", "#card-calendar"],
+      ["alerts",   "#card-alerts"]
     ];
     pairs.forEach(function (p) {
       var node = document.querySelector(p[1] + " [data-bind=body]");
       if (node) renderCard(p[0], node, w[p[0]]);
     });
 
-    // media widget renders into BOTH video and slideshow body
-    var videoNode = document.querySelector("#card-video [data-bind=video-body]");
-    var slideNode = document.querySelector("#card-slideshow [data-bind=slideshow-body]");
-    if (videoNode) renderVideo(videoNode, w.media);
-    if (slideNode) renderSlideshow(slideNode, w.media);
+    if (slotRuntime) slotRuntime.update(state);
+    else renderLegacySlotState(state);
+
+    // Fullscreen slideshow and rotation policy stay shell-owned. The LR
+    // module only owns the ordinary slideshow card body.
+    renderFullscreenSlideshow(w.media);
+    updateDisplayRotation(w.media);
     renderTicker(w);
   }
 
@@ -804,7 +1420,9 @@
 
   async function loop() {
     var state = await safeFetch(STATE_URL);
-    if (state) applyState(state);
+    if (!state) return;
+    await ensureSlotRuntime();
+    applyState(state);
   }
 
 
@@ -830,6 +1448,7 @@
   }
 
   function start() {
+    setDisplayMode("dashboard");
     tickClock();
     setInterval(tickClock, 30000);
     applyOracleOrnaments();
