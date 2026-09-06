@@ -5,14 +5,16 @@ The dashboard exposes two explicit `SlotRuntime` modules:
 - `poland-euro-schedule` → `UL`: Poland’s official CEV 2026 matches for both
   women (`K`) and men (`M`), including the full five-match pool schedule from
   the official calendars plus concrete final-phase matches as CEV publishes
-  them. The module renders only rows with a valid future UTC `start_at`; past,
-  live, missing, or malformed timestamps are excluded from UL. Each row shows
-  the Warsaw date and local time.
+  them. The module renders only rows with a valid timezone-aware `start_at`
+  that are currently `live` or are scheduled for the future; past, finished,
+  missing, postponed, and malformed rows are excluded. Each row shows the
+  Warsaw date and local time.
 - `euro-daily-schedule` → `LL`: all concrete matches currently published by
-  the official CEV final-phase pages, grouped by Europe/Warsaw date. The
-  selected date is the machine’s current Warsaw date; the returned CEV feed may
-  also contain the next published days. Each date group has an explicit
-  full-width schedule table.
+  the official CEV final-phase pages, grouped by Europe/Warsaw date, but only
+  while they are `live` or scheduled for the future. Finished and invalid rows
+  are omitted. The selected date is the machine’s current Warsaw date; the
+  returned CEV feed may also contain the next published days. Each date group
+  has an explicit full-width schedule table.
 
 ## Sources
 

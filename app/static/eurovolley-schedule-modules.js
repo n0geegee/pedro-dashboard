@@ -102,31 +102,34 @@
     return Number.isFinite(ms) ? ms : null;
   }
 
-  function upcomingOnly(rows, nowMs) {
+  function activeOrUpcomingOnly(rows, nowMs) {
     var reference = Number.isFinite(Number(nowMs)) ? Number(nowMs) : Date.now();
     return rows.filter(function (row) {
       var startMs = parseStartAtMs(row.startAt);
-      return startMs != null && startMs > reference;
+      if (startMs == null) return false;
+      if (row.status === "live") return true;
+      return row.status === "scheduled" && startMs > reference;
     });
   }
 
   function normalizeWidget(widget, mode, nowMs) {
     var envelope = widget && typeof widget === "object" ? widget : {};
     var data = envelope.data && typeof envelope.data === "object" ? envelope.data : {};
+    var reference = Number.isFinite(Number(nowMs)) ? Number(nowMs) : Date.now();
     var rows;
     var days = [];
     if (mode === "poland") {
-      rows = upcomingOnly(dedupeAndSort(data.poland_matches), nowMs);
+      rows = activeOrUpcomingOnly(dedupeAndSort(data.poland_matches), reference);
     } else {
       if (Array.isArray(data.days)) {
         data.days.forEach(function (day) {
           if (!day || typeof day !== "object") return;
-          var dayRows = dedupeAndSort(day.matches);
+          var dayRows = activeOrUpcomingOnly(dedupeAndSort(day.matches), reference);
           if (dayRows.length) days.push({ date: text(day.date, dayRows[0].date), matches: dayRows });
         });
       }
       if (!days.length) {
-        rows = dedupeAndSort(data.matches);
+        rows = activeOrUpcomingOnly(dedupeAndSort(data.matches), reference);
         if (rows.length) days = [{ date: rows[0].date, matches: rows }];
       }
     }
