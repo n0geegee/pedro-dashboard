@@ -112,7 +112,7 @@ def main() -> int:
         dynamic: List[Dict[str, Any]] = []
         for gender in ("K", "M"):
             html = fetch(SOURCES[gender]["official_url"])
-            rows = parse_cev_final_page(html, gender, retrieved_at)
+            rows = parse_cev_final_page(html, gender, retrieved_at, detail_fetch=fetch)
             if not rows:
                 raise RuntimeError(f"official CEV {gender} page yielded no concrete match cards")
             dynamic.extend(rows)

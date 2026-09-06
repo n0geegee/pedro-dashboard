@@ -26,6 +26,10 @@ The dashboard exposes two explicit `SlotRuntime` modules:
 
 The probe never synthesizes knockout opponents. CEV `TBD`, winner, and loser
 placeholders are omitted until both teams are concrete on the official page.
+When a concrete knockout card has empty date/time fields on the list page, the
+probe follows that card's official CEV `MatchPage` link and reads its published
+date/time. It still skips the row if the official detail page is unavailable;
+no opponent or time is guessed.
 
 ## Normalized widget contract
 
@@ -50,3 +54,14 @@ marks the widget `stale`; it does not blank sibling slots.
 `refresh-eurovolley.py` is called by the normal state refresher but throttles
 official CEV fetches to 15 minutes by default (`EUROVOLLEY_SOURCE_CACHE_SECONDS`)
 so the kiosk can update knockout fixtures without hammering the source.
+
+## Poland match-day skin
+
+The server-side `data-pl-matchday` flag is intentionally independent of the
+competition. It scans every registered state feed for normalized `home`/`away`
+match records, recognizes Poland by flag/code/name, and converts the trusted
+timestamp to `Europe/Warsaw`. Competition name, gender, phase, and status are
+not filters, so a women's or men's EuroVolley match, a VNL match, or a friendly
+activates the same skin. Missing, malformed, and non-Poland records are
+ignored; a match that already finished still activates the flag for the rest
+of its Warsaw calendar day.

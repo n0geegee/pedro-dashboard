@@ -58,6 +58,26 @@ class EuroVolleyScheduleTests(unittest.TestCase):
         self.assertEqual(semi["status"], "finished")
         self.assertEqual(semi["score"], "1:3")
 
+    def test_final_card_can_resolve_date_from_official_match_page(self) -> None:
+        html = card(9, 0, "WFF-01", "POLAND", "SERBIA", "", "")
+        html += '<div onclick="window.open(\'/Competition-Area/MatchPage.aspx?mID=85105&ID=1573\')"></div>'
+        detail = (
+            '<span id="Content_Right_MatchInfoBox1_L_MatchDate"><b>06/09/2026</b></span>'
+            '<span id="Content_Right_MatchInfoBox1_L_MatchHour"><b>16:00</b></span>'
+        )
+        seen_urls = []
+
+        def detail_fetch(url: str) -> str:
+            seen_urls.append(url)
+            return detail
+
+        rows = parse_cev_final_page(html, "K", STAMP, detail_fetch=detail_fetch)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["official_code"], "WFF-01")
+        self.assertEqual(rows[0]["source_date"], "2026-09-06")
+        self.assertEqual(rows[0]["warsaw_time"], "15:00")
+        self.assertEqual(seen_urls, ["https://www-old.cev.eu/Competition-Area/MatchPage.aspx?mID=85105&ID=1573"])
+
     def test_build_data_exposes_both_competitions_and_warsaw_days(self) -> None:
         html_k = card(9, 0, "WFF-01", "POLAND", "SERBIA", "06/09", "16:00")
         html_m = card(1, 0, "MFB-01", "BULGARIA", "NORTH MACEDONIA", "09/09", "19:00")

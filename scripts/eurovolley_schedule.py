@@ -14,7 +14,7 @@ from __future__ import annotations
 from datetime import date, datetime, time, timezone
 from html import unescape
 import re
-from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 from zoneinfo import ZoneInfo
 
 WARSAW_TZ = ZoneInfo("Europe/Warsaw")
@@ -207,9 +207,10 @@ def _team(source_name: str) -> Dict[str, str]:
 def _parse_date(value: str, year: int = EDITION) -> date:
     value = _clean_text(value)
     parts = value.split("/")
-    if len(parts) != 2:
+    if len(parts) not in (2, 3):
         raise ValueError(f"invalid CEV date: {value!r}")
-    return date(year, int(parts[1]), int(parts[0]))
+    parsed_year = year if len(parts) == 2 else int(parts[2])
+    return date(parsed_year, int(parts[1]), int(parts[0]))
 
 
 def _parse_time(value: str) -> time:
@@ -303,12 +304,55 @@ def _field(html: str, base: str, suffix: str) -> str:
     return _clean_text(match.group(1)) if match else ""
 
 
+def _match_page_url(html: str, start: int) -> str:
+    """Return a concrete official CEV MatchPage URL near a card.
+
+    The final-phase list occasionally leaves ``LB_Data``/``Label1`` empty
+    after a knockout card becomes concrete. The linked MatchPage still has
+    the authoritative date and time, so the refresh probe may resolve it.
+    """
+    window_start = max(0, start - 6000)
+    window = html[window_start : start + 6000]
+    match_pattern = re.compile(
+        r"MatchPage\.aspx\?(?:ID=\d+(?:&amp;|&)mID=\d+|"
+        r"mID=\d+(?:&amp;|&)ID=\d+)",
+        re.IGNORECASE,
+    )
+    match = next(match_pattern.finditer(window), None)
+    if not match:
+        return ""
+    quote_start = max(window.rfind('"', 0, match.start()), window.rfind("'", 0, match.start()))
+    href = unescape(window[quote_start + 1 : match.end()])
+    if href.startswith("http://") or href.startswith("https://"):
+        return href
+    if href.startswith("/"):
+        return "https://www-old.cev.eu" + href
+    return "https://www-old.cev.eu/Competition-Area/" + href.lstrip("~/")
+
+
+def _detail_field(html: str, suffix: str) -> str:
+    """Read a labelled value from an official CEV MatchPage."""
+    pattern = re.compile(
+        r"<(?:span|div)\b[^>]*\bid=[\"'][^\"']*_"
+        + re.escape(suffix)
+        + r"[\"'][^>]*>(.*?)</(?:span|div)>",
+        re.IGNORECASE | re.DOTALL,
+    )
+    match = pattern.search(html)
+    return _clean_text(match.group(1)) if match else ""
+
+
 def _is_placeholder(name: str) -> bool:
     value = _clean_text(name).upper()
     return not value or value in {"TBD", "T.B.D.", "?"} or "WINNER" in value or "LOSER" in value
 
 
-def parse_cev_final_page(html: str, gender: str, retrieved_at: str) -> List[Dict[str, Any]]:
+def parse_cev_final_page(
+    html: str,
+    gender: str,
+    retrieved_at: str,
+    detail_fetch: Optional[Callable[[str], str]] = None,
+) -> List[Dict[str, Any]]:
     """Parse concrete match cards from one official CEV final-phase page.
 
     The legacy page uses stable field suffixes (`LB_FMN`, `LB_Home`,
@@ -332,9 +376,20 @@ def parse_cev_final_page(html: str, gender: str, retrieved_at: str) -> List[Dict
         away = _field(html, base, "LB_Guest")
         date_text = _field(html, base, "LB_Data")
         time_text = _field(html, base, "Label1")
-        if _is_placeholder(home) or _is_placeholder(away) or not date_text or not time_text:
+        if _is_placeholder(home) or _is_placeholder(away):
             # CEV publishes bracket placeholders before teams are known. They
             # are not match data and must not appear as guessed fixtures.
+            continue
+        if (not date_text or not time_text) and detail_fetch:
+            match_url = _match_page_url(html, card.end())
+            if match_url:
+                try:
+                    detail_html = detail_fetch(match_url)
+                except Exception:
+                    detail_html = ""
+                date_text = date_text or _detail_field(detail_html, "L_MatchDate")
+                time_text = time_text or _detail_field(detail_html, "L_MatchHour")
+        if not date_text or not time_text:
             continue
         try:
             source_date = _parse_date(date_text)
