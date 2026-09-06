@@ -145,6 +145,19 @@
     };
   }
 
+  function normalizeTicker(widget) {
+    var envelope = widget && typeof widget === "object" ? widget : {};
+    var data = envelope.data && typeof envelope.data === "object" ? envelope.data : {};
+    var sourceRows = Array.isArray(data.poland_matches)
+      ? data.poland_matches
+      : (Array.isArray(data.matches) ? data.matches : []);
+    return {
+      status: text(envelope.status, "empty"),
+      updatedAt: text(envelope.updated_at || data.freshness && data.freshness.retrieved_at, ""),
+      rows: dedupeAndSort(sourceRows)
+    };
+  }
+
   function dateLabel(isoDate, selectedDate) {
     if (!isoDate) return "TERMIN";
     var parts = isoDate.split("-");
@@ -322,5 +335,6 @@
   // Expose pure selectors for deterministic tests without exposing DOM helpers.
   modules.normalizePoland = function (widget, nowMs) { return normalizeWidget(widget, "poland", nowMs); };
   modules.normalizeDaily = function (widget, nowMs) { return normalizeWidget(widget, "daily", nowMs); };
+  modules.normalizeTicker = function (widget) { return normalizeTicker(widget); };
   root.PedroEuroScheduleModules = modules;
 }(typeof globalThis !== "undefined" ? globalThis : this));

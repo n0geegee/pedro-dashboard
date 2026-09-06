@@ -1139,9 +1139,8 @@
   // Ticker text formats. Kept dead-simple on purpose: a kitchen reader
   // scanning the bottom strip has ~3 seconds per item, so the only fields
   // we show are WHO and HOW MUCH. No dates, no weekday, no competition
-  // name, no "następny:" / "LIVE:" prefix noise. Group letter (K/M) is
-  // omitted because all readers already know if they care about men's
-  // or women's results.
+  // name, no "następny:" / "LIVE:" prefix noise. K/M stays on every
+  // result so women's and men's matches remain distinguishable.
   function resultTickerText(m) {
     if (!m) return null;
     var home = teamName(m.home || { name: "Polska" });
@@ -1174,64 +1173,73 @@
     return home + " vs " + away;
   }
 
+  function euroVolleyTickerRows(widgets) {
+    var widget = widgets && widgets.eurovolley;
+    var modules = window.PedroEuroScheduleModules || {};
+    if (typeof modules.normalizeTicker === "function") {
+      var model = modules.normalizeTicker(widget);
+      return model && Array.isArray(model.rows) ? model.rows : [];
+    }
+    return [];
+  }
+
+  function tickerGroup(m) {
+    return m && (m.gender === "K" || m.gender === "M") ? m.gender : "";
+  }
+
+  function tickerStartAt(m) {
+    return (m && (m.startAt || m.start_at || m.date)) || "";
+  }
+
+  function tickerScore(m) {
+    if (!m) return null;
+    if (m.home_sets != null && m.away_sets != null) {
+      return m.home_sets + ":" + m.away_sets;
+    }
+    if (typeof m.score === "string" && m.score.trim()) {
+      return m.score.trim().split(/\s+/)[0];
+    }
+    return null;
+  }
+
   function renderTicker(widgets) {
     var track = document.getElementById("ticker-track");
     if (!track) return;
-    var vb = widgets && widgets.volleyball && widgets.volleyball.data ? widgets.volleyball.data : {};
-    var recent = vb.recent_results || {};
-    var menResults = Array.isArray(recent.men) ? recent.men : [];
-    var womenResults = Array.isArray(recent.women) ? recent.women : [];
-    var men = Array.isArray(vb.men) ? vb.men : [];
-    var women = Array.isArray(vb.women) ? vb.women : [];
+    var rows = euroVolleyTickerRows(widgets);
     var items = [];
-    var now = nowMs();
 
-    // Order: LIVE (if any) → most recent results (latest first, max 6) →
-    // nothing else. We deliberately do NOT show "następny" / "termin"
-    // items in the ticker — those belong in the widget above and they
-    // were the main source of the noise Jurand reported on 2026-06-18.
+    // Order: LIVE (if any) → most recent EuroVolley results (latest first,
+    // max 6). Upcoming fixtures belong in UL/LL, not in this compact strip.
 
-    // 1. LIVE matches first. The reader wants to know "who is playing
-    //    right now" before anything else.
-    var combinedAll = [];
-    men.forEach(function (m) { combinedAll.push({ group: "M", match: m }); });
-    women.forEach(function (m) { combinedAll.push({ group: "K", match: m }); });
-    combinedAll.forEach(function (entry) {
-      var st = matchStatus(entry.match, now);
-      if (st.status === "LIVE") {
-        var s = liveTickerText(Object.assign({}, entry.match, { _group: entry.group }));
+    // 1. LIVE matches first. Trust the normalized CEV status instead of
+    // deriving a live window from start_at; finished matches can have a
+    // recent timestamp and must not be relabelled LIVE.
+    rows.filter(function (m) { return m.status === "live"; })
+      .sort(function (a, b) {
+        return tickerStartAt(a).localeCompare(tickerStartAt(b));
+      })
+      .forEach(function (m) {
+        var live = Object.assign({}, m, { _group: tickerGroup(m) });
+        var s = liveTickerText(live);
         if (s) items.push(s);
-      }
-    });
-
-    // 2. Recent results. Sort newest → oldest by date desc, take up to 6.
-    //    "3:2 (19:25, 18:25, 25:22, 25:21, 15:11)" is the full string
-    //    from m.score — but for the ticker we want just the SET COUNT
-    //    (e.g. "3:2"), not the per-set breakdown. m.score is currently
-    //    "3:2 (19:25, ...)" so we strip the parenthesised breakdown.
-    var combinedResults = [];
-    menResults.forEach(function (m) { combinedResults.push({ group: "M", match: m }); });
-    womenResults.forEach(function (m) { combinedResults.push({ group: "K", match: m }); });
-    combinedResults.sort(function (a, b) {
-      var ad = (a.match && (a.match.start_at || a.match.date)) || "";
-      var bd = (b.match && (b.match.start_at || b.match.date)) || "";
-      return String(bd).localeCompare(String(ad));
-    });
-    combinedResults.slice(0, 6).forEach(function (entry) {
-      // Build a synthetic match with just the set count so resultTickerText
-      // produces "Polska 3:2 Ukraine" rather than the full per-set dump.
-      var m = entry.match || {};
-      var trimmed = Object.assign({}, m, {
-        _group: entry.group,
-        score: (m.home_sets != null && m.away_sets != null)
-                 ? (m.home_sets + ":" + m.away_sets)
-                 : null
       });
-      var s = resultTickerText(trimmed);
+
+    // 2. Completed/current results. The module state contains the official
+    // score; trim any per-set breakdown so the ticker stays readable.
+    rows.filter(function (m) {
+      return m.status === "finished" || tickerScore(m) != null;
+    }).sort(function (a, b) {
+      return tickerStartAt(b).localeCompare(tickerStartAt(a));
+    }).slice(0, 6).forEach(function (m) {
+      var result = Object.assign({}, m, {
+        _group: tickerGroup(m),
+        score: tickerScore(m)
+      });
+      var s = resultTickerText(result);
       if (s) items.push(s);
     });
 
-    if (!items.length) items.push("Brak wyników ostatnich meczów");
+    if (!items.length) items.push("Brak wyników EuroVolley");
     track.innerHTML = items.map(function (x) { return '<span>' + esc(x) + '</span>'; }).join('');
   }
 

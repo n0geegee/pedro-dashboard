@@ -2,7 +2,7 @@
 """Refresh normalized CEV EuroVolley 2026 state for the dashboard.
 
 The state refresher calls this script frequently, but the official CEV pages
-are fetched at most once per EUROVOLLEY_SOURCE_CACHE_SECONDS (default 900s).
+are fetched at most once per EUROVOLLEY_SOURCE_CACHE_SECONDS (default 120s).
 A failed refresh keeps the last good schedule and marks the envelope stale.
 """
 from __future__ import annotations
@@ -21,7 +21,7 @@ from eurovolley_schedule import SOURCES, build_data, parse_cev_final_page
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 STATE_PATH = PROJECT_ROOT / "app" / "state" / "eurovolley.json"
 USER_AGENT = "PedroDashboard/EuroVolley2026 (+https://www.cev.eu/)"
-DEFAULT_CACHE_SECONDS = 15 * 60
+DEFAULT_CACHE_SECONDS = 2 * 60
 
 
 def now_iso() -> str:

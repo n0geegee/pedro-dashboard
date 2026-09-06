@@ -29,7 +29,7 @@ const state = {
       { id: "m", gender: "M", status: "scheduled", warsaw_date: "2026-09-10", warsaw_time: "15:00", start_at: "2026-09-10T13:00:00+00:00", home: { name: "Polska", code: "POL" }, away: { name: "Portugalia", code: "POR" }, phase: "Faza grupowa" },
       { id: "k", gender: "K", status: "scheduled", warsaw_date: "2026-09-12", warsaw_time: "15:00", start_at: "2026-09-12T13:00:00+00:00", home: { name: "Polska", code: "POL" }, away: { name: "Serbia", code: "SRB" }, phase: "Mecz o 3. miejsce" },
       { id: "live", gender: "M", status: "live", warsaw_date: "2026-09-06", warsaw_time: "13:00", start_at: "2026-09-06T11:00:00+00:00", home: { name: "Polska", code: "POL" }, away: { name: "Włochy", code: "ITA" }, phase: "Faza grupowa" },
-      { id: "finished", gender: "M", status: "finished", warsaw_date: "2026-09-05", warsaw_time: "15:00", start_at: "2026-09-05T13:00:00+00:00", home: { name: "Polska", code: "POL" }, away: { name: "Czechy", code: "CZE" }, phase: "Faza grupowa" },
+      { id: "finished", gender: "M", status: "finished", score: "3:1", warsaw_date: "2026-09-05", warsaw_time: "15:00", start_at: "2026-09-05T13:00:00+00:00", home: { name: "Polska", code: "POL" }, away: { name: "Czechy", code: "CZE" }, phase: "Faza grupowa" },
       { id: "malformed", gender: "K", status: "scheduled", warsaw_date: "2026-09-20", warsaw_time: "15:00", start_at: "not-a-timestamp", home: { name: "Polska", code: "POL" }, away: { name: "Belgia", code: "BEL" }, phase: "Faza grupowa" }
     ],
     days: [
@@ -58,6 +58,20 @@ assert.strictEqual(daily.days[0].matches[0].id, "m");
 assert.strictEqual(daily.days[1].matches[0].id, "live");
 assert.ok(Array.from(daily.days).every(day => Array.from(day.matches).every(row => row.status === "live" || row.status === "scheduled")));
 assert.ok(!Array.from(daily.days).some(day => Array.from(day.matches).some(row => row.id === "finished")));
+
+const ticker = modules.normalizeTicker(state);
+assert.strictEqual(ticker.status, "stale");
+assert.strictEqual(ticker.rows.length, 5);
+assert.ok(ticker.rows.some(row => row.id === "finished"));
+assert.ok(ticker.rows.some(row => row.id === "live"));
+assert.strictEqual(ticker.rows.find(row => row.id === "finished").score, "3:1");
+assert.ok(!Array.from(poland.rows).some(row => row.id === "finished"));
+
+const appSource = fs.readFileSync(require("path").join(__dirname, "../app/static/app.js"), "utf8");
+const tickerSource = appSource.slice(appSource.indexOf("function renderTicker"), appSource.indexOf("// ---- slot runtime adapters"));
+assert.ok(appSource.includes("modules.normalizeTicker"));
+assert.ok(tickerSource.includes("Brak wyników EuroVolley"));
+assert.ok(!tickerSource.includes("recent_results"));
 assert.ok(source.includes('"euro-schedule__table"'));
 assert.ok(source.includes('"euro-schedule__date"'));
 

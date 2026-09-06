@@ -51,9 +51,10 @@ Venue-local times are converted with the venue’s IANA timezone before grouping
 and rendering in Warsaw time. A failed CEV fetch keeps the last good data and
 marks the widget `stale`; it does not blank sibling slots.
 
-`refresh-eurovolley.py` is called by the normal state refresher but throttles
-official CEV fetches to 15 minutes by default (`EUROVOLLEY_SOURCE_CACHE_SECONDS`)
-so the kiosk can update knockout fixtures without hammering the source.
+`refresh-eurovolley.py` is called by the normal 20-second state refresher.
+It throttles official CEV fetches to 120 seconds by default
+(`EUROVOLLEY_SOURCE_CACHE_SECONDS`) so the ticker and UL/LL remain passive,
+live views of the same changing state without hammering the source.
 
 ## Poland match-day skin
 
