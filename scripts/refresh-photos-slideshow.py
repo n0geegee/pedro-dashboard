@@ -73,10 +73,15 @@ def extract_photo_urls(html: str, max_images: int) -> list[str]:
         # Normalize escaped unicode remnants and request a dashboard-friendly size.
         u = u.replace("\\u003d", "=")
         # Use =s0 (original / no resize) — GPhotos returns the source asset at
-        # its native resolution. =w/h suffixes were down-scaling even when
-        # the source was already smaller (e.g. 902x902 screenshots), so the
-        # kiosk got 2560x1440 for big images but 902x902 for small ones.
-        u = re.sub(r"=(?:w\d+-h\d+|s\d+)(?:-[a-z]+)*$", "=s0", u)
+        # its native resolution. Some album HTML URLs already end with =w... or
+        # =s..., but many have no size suffix at all. A naked lh3 URL defaults
+        # to a tiny ~512px preview, which looks awful when the dashboard promotes
+        # it to fullscreen. Normalize both cases to =s0 before hashing/caching.
+        sized = re.sub(r"=(?:w\d+-h\d+|s\d+)(?:-[a-z]+)*$", "=s0", u)
+        if sized == u and not u.endswith("=s0"):
+            u = u + "=s0"
+        else:
+            u = sized
         if u in seen:
             continue
         seen.add(u)
@@ -93,18 +98,104 @@ def fetch_album_urls(album_url: str, max_images: int) -> list[str]:
     return extract_photo_urls(html, max_images=max_images)
 
 
+# Output target for the cached photo. We deliver WebP at kiosk-friendly
+# dimensions so Chrome decodes 4-6× smaller payloads than the native =s0 JPEG
+# returned by GPhotos (panoramas of 4032×3024 land at ~700 KB WebP instead of
+# ~6 MB JPEG), and renders the next slide without a visible black gap. The
+# resize is a pure shrink (no enlargement) so tiny originals keep their
+# detail and never blow up.
+WEBP_MAX_W = 1920
+WEBP_MAX_H = 1200
+WEBP_QUALITY = 82
+WEBP_METHOD = 6  # slowest but ~6-10% smaller than method 4; one-shot at cache.
+
+
 def download_if_needed(url: str, dest: Path) -> bool:
+    """Download the original JPEG (or whatever GPhotos serves) if no cached
+    derivative exists yet.
+
+    The cached derivative written to ``dest`` is a WebP resized to
+    ``WEBP_MAX_W`` × ``WEBP_MAX_H`` — see :func:`encode_webp`. ``dest``
+    therefore ends in ``.webp``, not ``.jpg``; this function only fetches
+    the upstream bytes to a side-car temp file, then ``encode_webp``
+    shrinks and transcodes them into place.
+    """
     if dest.exists() and dest.stat().st_size > 10_000:
         return False
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": "image/*"})
-    tmp = dest.with_suffix(dest.suffix + ".tmp")
-    with urllib.request.urlopen(req, timeout=45) as resp:
-        data = resp.read(8_000_000)
+    raw_tmp = dest.with_suffix(dest.suffix + ".src")
+    try:
+        with urllib.request.urlopen(req, timeout=45) as resp:
+            data = resp.read(8_000_000)
+    except Exception:
+        # Clean up partial download.
+        if raw_tmp.exists():
+            try:
+                raw_tmp.unlink()
+            except Exception:
+                pass
+        raise
     if len(data) < 10_000:
+        try:
+            raw_tmp.unlink()
+        except Exception:
+            pass
         raise RuntimeError("downloaded_image_too_small")
-    tmp.write_bytes(data)
-    tmp.replace(dest)
+    raw_tmp.write_bytes(data)
+    encode_webp(raw_tmp, dest)
+    try:
+        raw_tmp.unlink()
+    except Exception:
+        pass
     return True
+
+
+def encode_webp(src: Path, dest: Path) -> None:
+    """Resize ``src`` to ``WEBP_MAX_W`` × ``WEBP_MAX_H`` (no enlargement) and
+    write WebP q=82 m=6 to ``dest``.
+
+    Failures fall back to the source bytes (still mostly-cached JPEG,
+    decoded by Chrome, but no resize / no WebP savings) so a probe bug
+    never bricks the kiosk.
+    """
+    if not _HAVE_PIL:
+        # PIL missing — write the source bytes verbatim so the kiosk still
+        # has something to render. Chrome handles JPEG fine; we just lose
+        # the resize + WebP savings on this host.
+        dest.write_bytes(src.read_bytes())
+        return
+    try:
+        with _PILImage.open(src) as img:
+            # Honour EXIF orientation so the resized output matches what the
+            # user actually sees when they open the source in a viewer.
+            try:
+                from PIL import ImageOps as _ImageOps  # type: ignore
+                img = _ImageOps.exif_transpose(img)
+            except Exception:
+                pass
+            img.load()
+            # Convert to RGB so we can save as WebP (RGBA / palette would also
+            # work but RGB keeps the encoder deterministic across sources).
+            if img.mode != "RGB":
+                img = img.convert("RGB")
+            w, h = img.size
+            # Compute shrink target — pure shrink, never enlarge.
+            scale = min(WEBP_MAX_W / w, WEBP_MAX_H / h, 1.0)
+            if scale < 1.0:
+                new_w = max(1, int(round(w * scale)))
+                new_h = max(1, int(round(h * scale)))
+                img = img.resize((new_w, new_h), _PILImage.LANCZOS)
+            tmp = dest.with_suffix(dest.suffix + ".tmp")
+            img.save(tmp, "WEBP", quality=WEBP_QUALITY, method=WEBP_METHOD, exact=False)
+            tmp.replace(dest)
+    except Exception as exc:
+        # Last-ditch fallback: copy the source JPEG so Chrome still gets a
+        # valid image. Log to the probe's err log via caller.
+        try:
+            dest.write_bytes(src.read_bytes())
+        except Exception:
+            pass
+        raise
 
 
 def _measure_image(path: Path) -> dict[str, Any]:
@@ -143,7 +234,14 @@ def cache_album(album_url: str, cache_dir: Path, manifest_path: Path, max_images
     downloaded = 0
     for idx, url in enumerate(urls, start=1):
         digest = hashlib.sha1(url.encode("utf-8")).hexdigest()[:16]
-        dest = cache_dir / f"photo-{idx:03d}-{digest}.jpg"
+        # Filename is sha1-only — `idx` (album position) is intentionally NOT
+        # in the name because album order is not stable across rebuilds and
+        # baking it in produced 4× duplicate files over time (the same source
+        # URL would land under photo-167 today, photo-167 after a shuffle
+        # tomorrow, photo-171 the next refresh, etc.). The kiosk reads URLs
+        # straight from the manifest, so as long as the file is at
+        # photo-<sha>.webp and the manifest names it, we are good.
+        dest = cache_dir / f"photo-{digest}.webp"
         try:
             if download_if_needed(url, dest):
                 downloaded += 1

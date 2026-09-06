@@ -522,6 +522,21 @@ class PedroHandler(BaseHTTPRequestHandler):
                     self._send_json(HTTPStatus.NOT_FOUND, {"error": "not_found"}, send_body=send_body)
                     return
                 ctype = self._guess_content_type(candidate.name)
+                # Cached photo derivatives (WebP, hashed names) get a long
+                # immutable cache header so Chrome keeps the bitmap in its
+                # disk/RAM cache across slides. URL already includes sha1(url)
+                # so any source change yields a new filename — no stale risk.
+                if "/cache/photos/" in path:
+                    self.send_response(HTTPStatus.OK)
+                    self.send_header("Content-Type", ctype)
+                    self.send_header("Content-Length", str(candidate.stat().st_size))
+                    self.send_header("Cache-Control", "public, max-age=86400, immutable")
+                    self.send_header("X-Content-Type-Options", "nosniff")
+                    self.end_headers()
+                    if send_body:
+                        with open(candidate, "rb") as fh:
+                            self.wfile.write(fh.read())
+                    return
                 self._send_file(candidate, ctype, send_body=send_body)
                 return
             if path == "/favicon.ico":
@@ -554,6 +569,12 @@ class PedroHandler(BaseHTTPRequestHandler):
             return "application/json; charset=utf-8"
         if name.endswith(".svg"):
             return "image/svg+xml"
+        if name.endswith(".webp"):
+            return "image/webp"
+        if name.endswith(".jpg") or name.endswith(".jpeg"):
+            return "image/jpeg"
+        if name.endswith(".png"):
+            return "image/png"
         return "application/octet-stream"
 
     # Reject non-GET for now (MVP)

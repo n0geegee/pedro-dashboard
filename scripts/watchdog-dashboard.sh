@@ -42,6 +42,14 @@ pedro_ensure_dirs
 pedro_log "watchdog-dashboard.sh: action=$ACTION interval=${INTERVAL}s"
 
 RESTART_COUNT_FILE="$PEDRO_RUN_DIR/watchdog.restart_count"
+# Separate budget for kiosk relaunches so a Chrome flapping loop cannot
+# starve the dashboard-restart budget (or vice versa). Kiosk is a
+# desktop-session concern that should not cost the backend its hourly
+# restart allowance.
+KIOSK_RESTART_COUNT_FILE="$PEDRO_RUN_DIR/watchdog.kiosk_restart_count"
+# Default 12/hr (≈ one every 5 min). A healthy kiosk relaunches at most
+# once per session; we leave generous headroom for XFCE autostart races.
+KIOSK_MAX_RESTART_PER_HOUR="${PEDRO_WATCHDOG_KIOSK_MAX_RESTART_PER_HOUR:-12}"
 restart_in_window() {
   # Count restarts in the last 3600s. Stored as a flat file of
   # "<epoch>\n<epoch>\n..." lines, oldest first. Trim to last hour.
@@ -67,7 +75,38 @@ record_restart() {
   printf '%s\n' "$now" >> "$RESTART_COUNT_FILE" 2>/dev/null || true
 }
 
+# Kiosk-scoped variants: same shape, separate file so a kiosk flap
+# cannot drain the dashboard-restart budget.
+kiosk_restart_in_window() {
+  local now
+  now="$(date +%s)"
+  local cutoff=$((now - 3600))
+  local count=0
+  if [[ -f "$KIOSK_RESTART_COUNT_FILE" ]]; then
+    while IFS= read -r line; do
+      line="$(echo "$line" | tr -d '[:space:]')"
+      [[ "$line" =~ ^[0-9]+$ ]] || continue
+      if (( line >= cutoff )); then
+        count=$((count + 1))
+      fi
+    done < "$KIOSK_RESTART_COUNT_FILE"
+  fi
+  echo "$count"
+}
+
+record_kiosk_restart() {
+  local now
+  now="$(date +%s)"
+  printf '%s\n' "$now" >> "$KIOSK_RESTART_COUNT_FILE" 2>/dev/null || true
+}
+
 check_once() {
+  # Self-heal: if dashboard.pid is stale (e.g. 3623 from a previous run)
+  # but port 17888 is listening on a different live PID, rewrite the
+  # pid file from the listener. This protects against restart decisions
+  # being made on a phantom PID. Idempotent and never raises.
+  pedro_pid_repair_from_port "$PEDRO_PID_FILE" "$PEDRO_HOST" "$PEDRO_PORT" >/dev/null 2>&1 || true
+
   local status_json
   status_json="$("$SCRIPT_DIR/status-dashboard.sh" --json 2>/dev/null || true)"
   pedro_log "watchdog-dashboard.sh: status=$status_json"
@@ -79,8 +118,17 @@ check_once() {
     pedro_log "watchdog-dashboard.sh: health ok"
     if [[ "$(pedro_display_works)" == "1" ]]; then
       if ! "$SCRIPT_DIR/start-kiosk.sh" --status >/dev/null 2>&1; then
-        pedro_log "watchdog-dashboard.sh: kiosk missing while health ok; starting kiosk"
-        "$SCRIPT_DIR/start-kiosk.sh" >>"$PEDRO_WATCHDOG_LOG_FILE" 2>&1 || true
+        # Kiosk is missing while dashboard is healthy. This used to be
+        # unmetered — every 30s for hours — and is the loop we just
+        # fixed in start-kiosk.sh. Even with that fix, we want a
+        # backstop so a future regression cannot pin a CPU again.
+        if (( $(kiosk_restart_in_window) >= KIOSK_MAX_RESTART_PER_HOUR )); then
+          pedro_log "watchdog-dashboard.sh: kiosk restart budget exhausted ($KIOSK_MAX_RESTART_PER_HOUR/hr); skipping"
+        else
+          record_kiosk_restart
+          pedro_log "watchdog-dashboard.sh: kiosk missing while health ok; starting kiosk"
+          "$SCRIPT_DIR/start-kiosk.sh" >>"$PEDRO_WATCHDOG_LOG_FILE" 2>&1 || true
+        fi
       fi
     else
       pedro_log "watchdog-dashboard.sh: health ok but DISPLAY down; kiosk check skipped"
@@ -101,8 +149,14 @@ check_once() {
     # Optional kiosk recovery: only if the dashboard is now healthy AND
     # DISPLAY is up. We do NOT kill or relaunch Chrome when DISPLAY is
     # unreachable — kiosk is a desktop-session concern, not the watchdog's.
+    # Subject to the kiosk restart budget so a flap cannot pin a CPU.
     if [[ "$(pedro_http_health "$PEDRO_HEALTH_URL" 2)" == "1" ]] && [[ "$(pedro_display_works)" == "1" ]]; then
-      "$SCRIPT_DIR/start-kiosk.sh" >>"$PEDRO_WATCHDOG_LOG_FILE" 2>&1 || true
+      if (( $(kiosk_restart_in_window) >= KIOSK_MAX_RESTART_PER_HOUR )); then
+        pedro_log "watchdog-dashboard.sh: kiosk recovery budget exhausted; skipping"
+      else
+        record_kiosk_restart
+        "$SCRIPT_DIR/start-kiosk.sh" >>"$PEDRO_WATCHDOG_LOG_FILE" 2>&1 || true
+      fi
     fi
   fi
 

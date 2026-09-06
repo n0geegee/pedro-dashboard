@@ -359,10 +359,22 @@ def time_human(dt: datetime) -> str:
 
 
 def match_payload(item: dict) -> dict:
+    # Render `date_human` and `time` in PL (Europe/Warsaw), not in the
+    # venue's local tz. The Wikipedia cell is in host-local time (e.g.
+    # Hoffman Estates CDT = UTC-5), so a 2026-07-17T20:00 CDT match is
+    # 2026-07-18T03:00 in Warsaw. Showing the venue-local calendar day
+    # + wall clock made it look like Poland's men played 4 matches in 4
+    # consecutive days when in reality they're spread across 5 PL days
+    # including two 03:00 AM kickoffs. (Fix 2026-07-10.)
+    dt_pl = item["dt"].astimezone(TZ) if item["dt"].tzinfo else item["dt"]
     return {
         "date": item["date"],
-        "date_human": date_human(item["dt_local"]),
-        "time": time_human(item["dt_local"]),
+        # `date` stays the venue-local YYYY-MM-DD so cross-references with
+        # the Wikipedia source still line up; the dashboard widget
+        # recomputes the PL date itself from `start_at` (see app.js
+        # `formatDateWarsaw`). Kept for legacy callers + ticker fallback.
+        "date_human": date_human(dt_pl),
+        "time": time_human(dt_pl),
         "start_at": item["dt"].isoformat(),
         "home": {"name": item["home"], "flag": item["home_flag"]},
         "away": {"name": item["away"], "flag": item["away_flag"]},

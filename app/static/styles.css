@@ -615,6 +615,169 @@ body > * { position: relative; z-index: 1; }
 .tbd__title { color: var(--fg-soft); font-size: 16px; font-weight: 600; }
 .tbd__sub   { color: var(--fg-mute); font-size: 12.5px; max-width: 360px; }
 
+/* ========== LL BIRDWATCH ========== */
+/* Live chronological bird panel (data.kind === "birdwatch").
+ * Scoped to .birdwatch so we never bleed styles into the rest of the
+ * cockpit. Visual rhythm matches .tbd__title font sizes so the card
+ * keeps the same calm weight as the legacy placeholder.
+ */
+
+.birdwatch {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  padding: 14px 16px 16px;
+  gap: 10px;
+  min-height: 0;
+  overflow: hidden;
+}
+.birdwatch__head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.birdwatch__title {
+  color: var(--fg-soft);
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.birdwatch__subtitle {
+  color: var(--fg-mute);
+  font-size: 12px;
+}
+.birdwatch__audio {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11.5px;
+  color: var(--fg-mute);
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--line);
+  align-self: flex-start;
+  max-width: 100%;
+}
+.birdwatch__audio-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--fg-dim);
+  box-shadow: 0 0 0 0 transparent;
+  flex: 0 0 auto;
+}
+.birdwatch__audio--ok      { color: var(--fg-soft); }
+.birdwatch__audio--ok      .birdwatch__audio-dot {
+  background: var(--green);
+  box-shadow: 0 0 0 3px var(--green-soft);
+}
+.birdwatch__audio--missing { color: var(--orange); border-color: rgba(245, 159, 58, 0.4); }
+.birdwatch__audio--missing .birdwatch__audio-dot { background: var(--orange); }
+.birdwatch__audio--unknown { color: var(--fg-mute); }
+.birdwatch__audio--unknown .birdwatch__audio-dot { background: var(--yellow); }
+
+.birdwatch__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow: hidden;
+}
+.birdwatch__row {
+  display: grid;
+  grid-template-columns: 68px 1fr auto;
+  align-items: baseline;
+  column-gap: 12px;
+  padding: 6px 8px;
+  border-bottom: 1px dashed var(--line);
+  color: var(--fg-soft);
+  font-size: 13px;
+  line-height: 1.25;
+}
+.birdwatch__row:last-child { border-bottom: 0; }
+.birdwatch__row--fresh {
+  background: linear-gradient(
+    90deg,
+    rgba(43, 214, 106, 0.10) 0%,
+    rgba(43, 214, 106, 0.04) 60%,
+    transparent 100%
+  );
+}
+.birdwatch__row--low { color: var(--fg-mute); }
+.birdwatch__time {
+  font-family: ui-monospace, "SFMono-Regular", "Menlo", "Consolas", monospace;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg);
+  font-size: 13px;
+  font-weight: 500;
+}
+.birdwatch__species {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.birdwatch__species-pl {
+  color: var(--fg-soft);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.birdwatch__species-sci {
+  color: var(--fg-dim);
+  font-style: italic;
+  font-size: 11px;
+  margin-top: 1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.birdwatch__meta {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--fg-mute);
+  white-space: nowrap;
+}
+.birdwatch__conf {
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-soft);
+}
+.birdwatch__row--low .birdwatch__conf { color: var(--orange); }
+.birdwatch__station,
+.birdwatch__source {
+  display: inline-block;
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--line);
+  color: var(--fg-mute);
+}
+.birdwatch__empty {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--fg-mute);
+  font-size: 13px;
+  padding: 10px 8px;
+  border-top: 1px dashed var(--line);
+}
+.birdwatch__empty-icon {
+  display: inline-block;
+  width: 18px;
+  text-align: center;
+  color: var(--fg-dim);
+  font-size: 18px;
+  line-height: 1;
+}
+
 /* ========== VIDEO (UR) ========== */
 
 .card--video .card__body--video {
@@ -846,6 +1009,27 @@ body > * { position: relative; z-index: 1; }
     linear-gradient(180deg, #1d2c40 0%, #0a1424 100%);
   display: flex; align-items: flex-end; justify-content: center;
 }
+/* Stage wraps the two stacked layers and matches the parent (slideshow) frame. */
+.slideshow__stage {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+.slideshow__layer {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity 0.35s ease-in-out;
+  will-change: opacity;
+}
+.slideshow__layer.is-active {
+  opacity: 1;
+}
+/* The decorative skyline/lake/trees panes still live inside .slideshow__photo
+   when there's no image — keep them rendering behind everything. */
+.slideshow__photo:not(.slideshow__layer) {
+  z-index: 0;
+}
 .slideshow__skyline {
   position: absolute; left: 0; right: 0; top: 18%;
   height: 50%;
@@ -943,6 +1127,116 @@ body > * { position: relative; z-index: 1; }
   border-radius: 12px;
   border: 1px solid var(--line);
   font-variant-numeric: tabular-nums;
+}
+
+/* Full-viewport passive slideshow rotation. Chrome already runs in kiosk
+   full-screen; this overlay makes the LR slideshow occupy the whole screen for
+   the 5-minute display phase without calling the browser Fullscreen API. */
+.fullscreen-slideshow {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: none;
+  overflow: hidden;
+  background: #000;
+  color: rgba(255,255,255,0.9);
+}
+body[data-display-mode="slideshow"] .fullscreen-slideshow {
+  display: block;
+}
+body[data-display-mode="slideshow"] {
+  cursor: none;
+}
+.fullscreen-slideshow__stage,
+.fullscreen-slideshow__photo,
+.fullscreen-slideshow__shade {
+  position: absolute;
+  inset: 0;
+}
+.fullscreen-slideshow__photo {
+  background-position: center center;
+  background-repeat: no-repeat;
+  background-size: cover;
+  transform: scale(1.002);
+}
+/* Two layers stacked, crossfade via opacity transition. The active layer
+   paints the currently-visible photo; the inactive layer holds the upcoming
+   one and is warmed via preload + decode() before being flipped. */
+.fullscreen-slideshow__layer {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity 0.45s ease-in-out;
+  will-change: opacity;
+  background-position: center center;
+  background-repeat: no-repeat;
+  background-size: cover;
+  transform: scale(1.002);
+}
+.fullscreen-slideshow__layer.is-active {
+  opacity: 1;
+}
+.fullscreen-slideshow__layer.fullscreen-slideshow__photo--portrait,
+.fullscreen-slideshow__layer.fullscreen-slideshow__photo--square {
+  background-size: contain;
+  background-color: #000;
+  transform: none;
+}
+.fullscreen-slideshow__photo--portrait,
+.fullscreen-slideshow__photo--square {
+  background-size: contain;
+  background-color: #000;
+}
+.fullscreen-slideshow__shade {
+  pointer-events: none;
+  background:
+    linear-gradient(180deg, rgba(0,0,0,0.22) 0%, rgba(0,0,0,0) 22%, rgba(0,0,0,0) 64%, rgba(0,0,0,0.42) 100%),
+    radial-gradient(75% 50% at 50% 50%, rgba(0,0,0,0) 35%, rgba(0,0,0,0.20) 100%);
+}
+.fullscreen-slideshow__label {
+  position: absolute;
+  top: 22px;
+  left: 26px;
+  padding: 8px 13px;
+  border-radius: 999px;
+  background: rgba(0,0,0,0.35);
+  border: 1px solid rgba(255,255,255,0.18);
+  color: rgba(255,255,255,0.82);
+  font-size: 12px;
+  font-weight: 850;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  backdrop-filter: blur(10px);
+}
+.fullscreen-slideshow__meta {
+  position: absolute;
+  left: 26px;
+  right: 26px;
+  bottom: 24px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  color: rgba(255,255,255,0.88);
+  text-shadow: 0 2px 16px rgba(0,0,0,0.7);
+  font-size: 18px;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.fullscreen-slideshow__meta span:last-child {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.78;
+}
+.fullscreen-slideshow__empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: rgba(255,255,255,0.72);
+  font-size: 28px;
+  font-weight: 750;
+  letter-spacing: 0.04em;
 }
 
 /* small screen fallback (should not be needed at 1920x1200 but keeps it safe) */

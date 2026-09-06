@@ -100,30 +100,50 @@ fi
 # Spawn in a new session so the dashboard is decoupled from the calling
 # shell. setsid + redirected stdio + pidfile hand-off is the standard
 # no-systemd pattern.
+#
+# NOTE: as with the kiosk launcher, the immediate child of this shell is
+# the setsid/glibc helper, not the long-lived python process. $! will
+# refer to a process that exits within milliseconds. We therefore
+# resolve the real python pid from the listener on port $PEDRO_PORT.
 DASHBOARD_HOST="$PEDRO_HOST" DASHBOARD_PORT="$PEDRO_PORT" \
   setsid "$PY_BIN" "${PEDRO_SERVER_ARGS_DEFAULT[@]}" \
   >>"$PEDRO_LOG_FILE" 2>>"$PEDRO_LOG_ERR_FILE" </dev/null &
 
-SERVER_PID=$!
-echo "$SERVER_PID" > "$PEDRO_PID_FILE"
-pedro_log "start-dashboard.sh: spawned pid=$SERVER_PID"
-
-# Wait up to ~6s for the server to come up.
+# Wait up to ~6s for the server to come up. While we wait, repair the
+# pid file from the listener so future health / status / restart code
+# sees the real PID even on a slow spawn.
 for _ in $(seq 1 30); do
   sleep 0.2
   if [[ "$(pedro_http_health "$PEDRO_HEALTH_URL" 1)" == "1" ]]; then
-    echo "dashboard started (pid=$SERVER_PID, http://$PEDRO_HOST:$PEDRO_PORT/)"
-    pedro_log "start-dashboard.sh: health ok after spawn"
+    pedro_pid_repair_from_port "$PEDRO_PID_FILE" "$PEDRO_HOST" "$PEDRO_PORT" >/dev/null 2>&1 || true
+    SERVER_PID="$(tr -d '[:space:]' < "$PEDRO_PID_FILE" 2>/dev/null || true)"
+    if [[ -z "$SERVER_PID" ]] || ! kill -0 "$SERVER_PID" 2>/dev/null; then
+      # Repair did not produce a live pid; fall back to whatever pgrep finds
+      # for our server script. Last-ditch: use the setsid wrapper pid even
+      # though it may already be gone — exit 0 is fine because health is OK.
+      SERVER_PID="$(pgrep -f -n -- "$PEDRO_PROJECT_ROOT/app/server\.py" 2>/dev/null || true)"
+    fi
+    echo "dashboard started (pid=${SERVER_PID:-unknown}, http://$PEDRO_HOST:$PEDRO_PORT/)"
+    pedro_log "start-dashboard.sh: health ok after spawn pid=${SERVER_PID:-unknown}"
     exit 0
   fi
-  if ! kill -0 "$SERVER_PID" 2>/dev/null; then
-    echo "ERROR: server process exited before becoming healthy; see $PEDRO_LOG_ERR_FILE" >&2
-    pedro_log "start-dashboard.sh: server process died before health"
-    rm -f "$PEDRO_PID_FILE" 2>/dev/null || true
-    exit 72
+  # Health not yet up. If our setsid wrapper already died, surface that
+  # earlier than the 6s budget.
+  if ! pgrep -f -n -- "$PEDRO_PROJECT_ROOT/app/server\.py" >/dev/null 2>&1; then
+    # No matching python process yet — could be slow start, do not abort.
+    :
   fi
 done
 
-echo "WARN: server spawned (pid=$SERVER_PID) but /api/health not yet OK after 6s; check $PEDRO_LOG_ERR_FILE" >&2
-pedro_log "start-dashboard.sh: WARN health not ok after 6s; pid=$SERVER_PID"
+# 6s elapsed without /api/health. Try one more repair, then report.
+pedro_pid_repair_from_port "$PEDRO_PID_FILE" "$PEDRO_HOST" "$PEDRO_PORT" >/dev/null 2>&1 || true
+SERVER_PID="$(tr -d '[:space:]' < "$PEDRO_PID_FILE" 2>/dev/null || true)"
+if [[ -n "$SERVER_PID" ]] && kill -0 "$SERVER_PID" 2>/dev/null; then
+  echo "WARN: server pid=$SERVER_PID alive but /api/health not yet OK after 6s; check $PEDRO_LOG_ERR_FILE" >&2
+  pedro_log "start-dashboard.sh: WARN health not ok after 6s; pid=$SERVER_PID"
+  exit 72
+fi
+echo "ERROR: server process exited before becoming healthy; see $PEDRO_LOG_ERR_FILE" >&2
+pedro_log "start-dashboard.sh: server process died before health"
+rm -f "$PEDRO_PID_FILE" 2>/dev/null || true
 exit 72
