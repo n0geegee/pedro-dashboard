@@ -13,6 +13,7 @@ from eurovolley_schedule import (  # noqa: E402
     build_data,
     parse_cev_final_page,
     static_poland_matches,
+    static_schedule_matches,
 )
 
 
@@ -43,6 +44,25 @@ class EuroVolleyScheduleTests(unittest.TestCase):
         self.assertTrue(all(row["start_at"].endswith("+00:00") for row in rows))
         self.assertEqual(rows[0]["warsaw_time"], "18:00")  # Istanbul 19:00 -> PL 18:00
         self.assertEqual(rows[5]["warsaw_time"], "15:00")  # Sofia 16:00 -> PL 15:00
+
+    def test_static_schedule_has_all_six_men_matches_on_10_september(self) -> None:
+        rows = [row for row in static_schedule_matches(STAMP) if row["source_date"] == "2026-09-10"]
+        self.assertEqual(len(rows), 6)
+        self.assertEqual(
+            {(row["home"]["code"], row["away"]["code"]) for row in rows},
+            {
+                ("POL", "POR"),
+                ("ISR", "UKR"),
+                ("FIN", "DEN"),
+                ("ITA", "SWE"),
+                ("FRA", "SUI"),
+                ("TUR", "GER"),
+            },
+        )
+        self.assertEqual(
+            {row["warsaw_time"] for row in rows},
+            {"15:00", "16:00", "18:00", "19:00", "21:05"},
+        )
 
     def test_official_card_parser_normalizes_score_and_phase(self) -> None:
         html = card(9, 0, "WFF-01", "POLAND", "SERBIA", "06/09", "16:00")
@@ -91,12 +111,23 @@ class EuroVolleyScheduleTests(unittest.TestCase):
             [day["date"] for day in data["days"]],
             [
                 "2026-08-22", "2026-08-24", "2026-08-25", "2026-08-27", "2026-08-28",
-                "2026-09-06", "2026-09-09", "2026-09-10", "2026-09-12", "2026-09-13",
-                "2026-09-15", "2026-09-16",
+                "2026-09-06", "2026-09-09", "2026-09-10", "2026-09-11", "2026-09-12",
+                "2026-09-13", "2026-09-14", "2026-09-15", "2026-09-16", "2026-09-17",
             ],
         )
         sep10 = next(day for day in data["days"] if day["date"] == "2026-09-10")
-        self.assertTrue(any(row["home"]["code"] == "POL" for row in sep10["matches"]))
+        self.assertEqual(len(sep10["matches"]), 6)
+        self.assertEqual(
+            {(row["home"]["code"], row["away"]["code"]) for row in sep10["matches"]},
+            {
+                ("POL", "POR"),
+                ("ISR", "UKR"),
+                ("FIN", "DEN"),
+                ("ITA", "SWE"),
+                ("FRA", "SUI"),
+                ("TUR", "GER"),
+            },
+        )
         self.assertTrue(any(row["id"] == "M-calendar-M-2026-09-10-POL-POR" for row in data["matches"]))
 
 

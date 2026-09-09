@@ -4,7 +4,8 @@
 The source boundary is deliberately narrow:
 - the official CEV final-phase pages provide the currently published/current
   match cards (including concrete knockout matchups as they emerge);
-- the official CEV calendar PDFs provide Poland's complete pool schedule.
+- the official CEV calendar PDFs provide the complete men's pool schedule and
+  the women's Poland pool fixtures.
 
 No result or future knockout pairing is fabricated. Unknown knockout teams are
 ignored until CEV publishes concrete teams on the official final-phase page.
@@ -130,6 +131,79 @@ POLAND_POOL_ROWS: Sequence[Mapping[str, str]] = (
     {"gender": "M", "pool": "B", "date": "2026-09-13", "time": "19:00", "home": "NORTH MACEDONIA", "away": "POLAND", "city": "Sofia", "country": "Bulgaria", "tz": "Europe/Sofia"},
     {"gender": "M", "pool": "B", "date": "2026-09-15", "time": "19:00", "home": "POLAND", "away": "UKRAINE", "city": "Sofia", "country": "Bulgaria", "tz": "Europe/Sofia"},
     {"gender": "M", "pool": "B", "date": "2026-09-16", "time": "19:00", "home": "POLAND", "away": "BULGARIA", "city": "Sofia", "country": "Bulgaria", "tz": "Europe/Sofia"},
+)
+
+# Men's complete group-stage calendar from the official CEV PDF. The five
+# Poland rows intentionally overlap POLAND_POOL_ROWS; static_schedule_matches
+# de-duplicates them while static_poland_matches keeps its stable 10-row API.
+MEN_POOL_ROWS: Sequence[Mapping[str, str]] = (
+    # Pool A — Naples/Modena (Italy), official local time.
+    {"gender": "M", "pool": "A", "date": "2026-09-10", "time": "21:05", "home": "ITALY", "away": "SWEDEN", "city": "Naples", "country": "Italy", "tz": "Europe/Rome"},
+    {"gender": "M", "pool": "A", "date": "2026-09-11", "time": "16:00", "home": "CZECHIA", "away": "GREECE", "city": "Modena", "country": "Italy", "tz": "Europe/Rome"},
+    {"gender": "M", "pool": "A", "date": "2026-09-11", "time": "21:00", "home": "SLOVAKIA", "away": "SLOVENIA", "city": "Modena", "country": "Italy", "tz": "Europe/Rome"},
+    {"gender": "M", "pool": "A", "date": "2026-09-12", "time": "16:00", "home": "SWEDEN", "away": "CZECHIA", "city": "Modena", "country": "Italy", "tz": "Europe/Rome"},
+    {"gender": "M", "pool": "A", "date": "2026-09-12", "time": "21:05", "home": "GREECE", "away": "ITALY", "city": "Modena", "country": "Italy", "tz": "Europe/Rome"},
+    {"gender": "M", "pool": "A", "date": "2026-09-13", "time": "16:00", "home": "SLOVENIA", "away": "SWEDEN", "city": "Modena", "country": "Italy", "tz": "Europe/Rome"},
+    {"gender": "M", "pool": "A", "date": "2026-09-13", "time": "21:05", "home": "ITALY", "away": "SLOVAKIA", "city": "Modena", "country": "Italy", "tz": "Europe/Rome"},
+    {"gender": "M", "pool": "A", "date": "2026-09-14", "time": "16:00", "home": "SLOVAKIA", "away": "CZECHIA", "city": "Modena", "country": "Italy", "tz": "Europe/Rome"},
+    {"gender": "M", "pool": "A", "date": "2026-09-14", "time": "21:00", "home": "SLOVENIA", "away": "GREECE", "city": "Modena", "country": "Italy", "tz": "Europe/Rome"},
+    {"gender": "M", "pool": "A", "date": "2026-09-15", "time": "16:00", "home": "GREECE", "away": "SWEDEN", "city": "Modena", "country": "Italy", "tz": "Europe/Rome"},
+    {"gender": "M", "pool": "A", "date": "2026-09-15", "time": "21:05", "home": "CZECHIA", "away": "ITALY", "city": "Modena", "country": "Italy", "tz": "Europe/Rome"},
+    {"gender": "M", "pool": "A", "date": "2026-09-16", "time": "16:00", "home": "SWEDEN", "away": "SLOVAKIA", "city": "Modena", "country": "Italy", "tz": "Europe/Rome"},
+    {"gender": "M", "pool": "A", "date": "2026-09-16", "time": "21:05", "home": "CZECHIA", "away": "SLOVENIA", "city": "Modena", "country": "Italy", "tz": "Europe/Rome"},
+    {"gender": "M", "pool": "A", "date": "2026-09-17", "time": "16:00", "home": "SLOVAKIA", "away": "GREECE", "city": "Modena", "country": "Italy", "tz": "Europe/Rome"},
+    {"gender": "M", "pool": "A", "date": "2026-09-17", "time": "21:05", "home": "ITALY", "away": "SLOVENIA", "city": "Modena", "country": "Italy", "tz": "Europe/Rome"},
+
+    # Pool B — Sofia (Bulgaria), official local time.
+    {"gender": "M", "pool": "B", "date": "2026-09-09", "time": "19:00", "home": "BULGARIA", "away": "NORTH MACEDONIA", "city": "Sofia", "country": "Bulgaria", "tz": "Europe/Sofia"},
+    {"gender": "M", "pool": "B", "date": "2026-09-10", "time": "16:00", "home": "POLAND", "away": "PORTUGAL", "city": "Sofia", "country": "Bulgaria", "tz": "Europe/Sofia"},
+    {"gender": "M", "pool": "B", "date": "2026-09-10", "time": "19:00", "home": "ISRAEL", "away": "UKRAINE", "city": "Sofia", "country": "Bulgaria", "tz": "Europe/Sofia"},
+    {"gender": "M", "pool": "B", "date": "2026-09-11", "time": "16:00", "home": "UKRAINE", "away": "NORTH MACEDONIA", "city": "Sofia", "country": "Bulgaria", "tz": "Europe/Sofia"},
+    {"gender": "M", "pool": "B", "date": "2026-09-11", "time": "19:00", "home": "PORTUGAL", "away": "BULGARIA", "city": "Sofia", "country": "Bulgaria", "tz": "Europe/Sofia"},
+    {"gender": "M", "pool": "B", "date": "2026-09-12", "time": "16:00", "home": "POLAND", "away": "ISRAEL", "city": "Sofia", "country": "Bulgaria", "tz": "Europe/Sofia"},
+    {"gender": "M", "pool": "B", "date": "2026-09-12", "time": "19:00", "home": "BULGARIA", "away": "UKRAINE", "city": "Sofia", "country": "Bulgaria", "tz": "Europe/Sofia"},
+    {"gender": "M", "pool": "B", "date": "2026-09-13", "time": "16:00", "home": "PORTUGAL", "away": "ISRAEL", "city": "Sofia", "country": "Bulgaria", "tz": "Europe/Sofia"},
+    {"gender": "M", "pool": "B", "date": "2026-09-13", "time": "19:00", "home": "NORTH MACEDONIA", "away": "POLAND", "city": "Sofia", "country": "Bulgaria", "tz": "Europe/Sofia"},
+    {"gender": "M", "pool": "B", "date": "2026-09-14", "time": "16:00", "home": "UKRAINE", "away": "PORTUGAL", "city": "Sofia", "country": "Bulgaria", "tz": "Europe/Sofia"},
+    {"gender": "M", "pool": "B", "date": "2026-09-14", "time": "19:00", "home": "BULGARIA", "away": "ISRAEL", "city": "Sofia", "country": "Bulgaria", "tz": "Europe/Sofia"},
+    {"gender": "M", "pool": "B", "date": "2026-09-15", "time": "16:00", "home": "NORTH MACEDONIA", "away": "PORTUGAL", "city": "Sofia", "country": "Bulgaria", "tz": "Europe/Sofia"},
+    {"gender": "M", "pool": "B", "date": "2026-09-15", "time": "19:00", "home": "POLAND", "away": "UKRAINE", "city": "Sofia", "country": "Bulgaria", "tz": "Europe/Sofia"},
+    {"gender": "M", "pool": "B", "date": "2026-09-16", "time": "16:00", "home": "ISRAEL", "away": "NORTH MACEDONIA", "city": "Sofia", "country": "Bulgaria", "tz": "Europe/Sofia"},
+    {"gender": "M", "pool": "B", "date": "2026-09-16", "time": "19:00", "home": "POLAND", "away": "BULGARIA", "city": "Sofia", "country": "Bulgaria", "tz": "Europe/Sofia"},
+
+    # Pool C — Tampere (Finland), official local time.
+    {"gender": "M", "pool": "C", "date": "2026-09-10", "time": "20:00", "home": "FINLAND", "away": "DENMARK", "city": "Tampere", "country": "Finland", "tz": "Europe/Helsinki"},
+    {"gender": "M", "pool": "C", "date": "2026-09-11", "time": "17:00", "home": "NETHERLANDS", "away": "BELGIUM", "city": "Tampere", "country": "Finland", "tz": "Europe/Helsinki"},
+    {"gender": "M", "pool": "C", "date": "2026-09-11", "time": "20:00", "home": "SERBIA", "away": "ESTONIA", "city": "Tampere", "country": "Finland", "tz": "Europe/Helsinki"},
+    {"gender": "M", "pool": "C", "date": "2026-09-12", "time": "15:00", "home": "DENMARK", "away": "NETHERLANDS", "city": "Tampere", "country": "Finland", "tz": "Europe/Helsinki"},
+    {"gender": "M", "pool": "C", "date": "2026-09-12", "time": "18:00", "home": "BELGIUM", "away": "FINLAND", "city": "Tampere", "country": "Finland", "tz": "Europe/Helsinki"},
+    {"gender": "M", "pool": "C", "date": "2026-09-13", "time": "15:00", "home": "ESTONIA", "away": "DENMARK", "city": "Tampere", "country": "Finland", "tz": "Europe/Helsinki"},
+    {"gender": "M", "pool": "C", "date": "2026-09-13", "time": "18:00", "home": "FINLAND", "away": "SERBIA", "city": "Tampere", "country": "Finland", "tz": "Europe/Helsinki"},
+    {"gender": "M", "pool": "C", "date": "2026-09-14", "time": "17:00", "home": "SERBIA", "away": "NETHERLANDS", "city": "Tampere", "country": "Finland", "tz": "Europe/Helsinki"},
+    {"gender": "M", "pool": "C", "date": "2026-09-14", "time": "20:00", "home": "ESTONIA", "away": "BELGIUM", "city": "Tampere", "country": "Finland", "tz": "Europe/Helsinki"},
+    {"gender": "M", "pool": "C", "date": "2026-09-15", "time": "17:00", "home": "BELGIUM", "away": "DENMARK", "city": "Tampere", "country": "Finland", "tz": "Europe/Helsinki"},
+    {"gender": "M", "pool": "C", "date": "2026-09-15", "time": "20:00", "home": "NETHERLANDS", "away": "FINLAND", "city": "Tampere", "country": "Finland", "tz": "Europe/Helsinki"},
+    {"gender": "M", "pool": "C", "date": "2026-09-16", "time": "17:00", "home": "DENMARK", "away": "SERBIA", "city": "Tampere", "country": "Finland", "tz": "Europe/Helsinki"},
+    {"gender": "M", "pool": "C", "date": "2026-09-16", "time": "20:00", "home": "NETHERLANDS", "away": "ESTONIA", "city": "Tampere", "country": "Finland", "tz": "Europe/Helsinki"},
+    {"gender": "M", "pool": "C", "date": "2026-09-17", "time": "17:00", "home": "SERBIA", "away": "BELGIUM", "city": "Tampere", "country": "Finland", "tz": "Europe/Helsinki"},
+    {"gender": "M", "pool": "C", "date": "2026-09-17", "time": "20:00", "home": "FINLAND", "away": "ESTONIA", "city": "Tampere", "country": "Finland", "tz": "Europe/Helsinki"},
+
+    # Pool D — Cluj-Napoca (Romania), official local time.
+    {"gender": "M", "pool": "D", "date": "2026-09-09", "time": "20:00", "home": "ROMANIA", "away": "LATVIA", "city": "Cluj-Napoca", "country": "Romania", "tz": "Europe/Bucharest"},
+    {"gender": "M", "pool": "D", "date": "2026-09-10", "time": "17:00", "home": "FRANCE", "away": "SWITZERLAND", "city": "Cluj-Napoca", "country": "Romania", "tz": "Europe/Bucharest"},
+    {"gender": "M", "pool": "D", "date": "2026-09-10", "time": "20:00", "home": "TÜRKIYE", "away": "GERMANY", "city": "Cluj-Napoca", "country": "Romania", "tz": "Europe/Bucharest"},
+    {"gender": "M", "pool": "D", "date": "2026-09-11", "time": "17:00", "home": "GERMANY", "away": "LATVIA", "city": "Cluj-Napoca", "country": "Romania", "tz": "Europe/Bucharest"},
+    {"gender": "M", "pool": "D", "date": "2026-09-11", "time": "20:00", "home": "SWITZERLAND", "away": "ROMANIA", "city": "Cluj-Napoca", "country": "Romania", "tz": "Europe/Bucharest"},
+    {"gender": "M", "pool": "D", "date": "2026-09-12", "time": "17:00", "home": "FRANCE", "away": "TÜRKIYE", "city": "Cluj-Napoca", "country": "Romania", "tz": "Europe/Bucharest"},
+    {"gender": "M", "pool": "D", "date": "2026-09-12", "time": "20:00", "home": "ROMANIA", "away": "GERMANY", "city": "Cluj-Napoca", "country": "Romania", "tz": "Europe/Bucharest"},
+    {"gender": "M", "pool": "D", "date": "2026-09-13", "time": "17:00", "home": "SWITZERLAND", "away": "TÜRKIYE", "city": "Cluj-Napoca", "country": "Romania", "tz": "Europe/Bucharest"},
+    {"gender": "M", "pool": "D", "date": "2026-09-13", "time": "20:00", "home": "LATVIA", "away": "FRANCE", "city": "Cluj-Napoca", "country": "Romania", "tz": "Europe/Bucharest"},
+    {"gender": "M", "pool": "D", "date": "2026-09-14", "time": "17:00", "home": "GERMANY", "away": "SWITZERLAND", "city": "Cluj-Napoca", "country": "Romania", "tz": "Europe/Bucharest"},
+    {"gender": "M", "pool": "D", "date": "2026-09-14", "time": "20:00", "home": "ROMANIA", "away": "TÜRKIYE", "city": "Cluj-Napoca", "country": "Romania", "tz": "Europe/Bucharest"},
+    {"gender": "M", "pool": "D", "date": "2026-09-15", "time": "17:00", "home": "LATVIA", "away": "SWITZERLAND", "city": "Cluj-Napoca", "country": "Romania", "tz": "Europe/Bucharest"},
+    {"gender": "M", "pool": "D", "date": "2026-09-15", "time": "20:00", "home": "FRANCE", "away": "GERMANY", "city": "Cluj-Napoca", "country": "Romania", "tz": "Europe/Bucharest"},
+    {"gender": "M", "pool": "D", "date": "2026-09-16", "time": "17:00", "home": "TÜRKIYE", "away": "LATVIA", "city": "Cluj-Napoca", "country": "Romania", "tz": "Europe/Bucharest"},
+    {"gender": "M", "pool": "D", "date": "2026-09-16", "time": "20:00", "home": "FRANCE", "away": "ROMANIA", "city": "Cluj-Napoca", "country": "Romania", "tz": "Europe/Bucharest"},
 )
 
 # The final-phase pages expose one current leg per phase. The group indices
@@ -267,9 +341,9 @@ def _match(
     }
 
 
-def static_poland_matches(retrieved_at: str) -> List[Dict[str, Any]]:
+def _rows_to_matches(rows: Iterable[Mapping[str, str]], retrieved_at: str) -> List[Dict[str, Any]]:
     matches: List[Dict[str, Any]] = []
-    for row in POLAND_POOL_ROWS:
+    for row in rows:
         gender = row["gender"]
         competition = SOURCES[gender]
         source_date = date.fromisoformat(row["date"])
@@ -291,6 +365,25 @@ def static_poland_matches(retrieved_at: str) -> List[Dict[str, Any]]:
             )
         )
     return matches
+
+
+def static_poland_matches(retrieved_at: str) -> List[Dict[str, Any]]:
+    """Return the stable Poland-only calendar used by UL and the ticker."""
+    return _rows_to_matches(POLAND_POOL_ROWS, retrieved_at)
+
+
+def static_schedule_matches(retrieved_at: str) -> List[Dict[str, Any]]:
+    """Return every statically known daily pool fixture for the LL day view."""
+    poland_keys = {
+        (row["date"], _team_code(row["home"]), _team_code(row["away"]))
+        for row in POLAND_POOL_ROWS
+    }
+    rows: List[Mapping[str, str]] = list(POLAND_POOL_ROWS)
+    rows.extend(
+        row for row in MEN_POOL_ROWS
+        if (row["date"], _team_code(row["home"]), _team_code(row["away"])) not in poland_keys
+    )
+    return _rows_to_matches(rows, retrieved_at)
 
 
 def _field(html: str, base: str, suffix: str) -> str:
@@ -466,10 +559,10 @@ def _group_days(matches: Iterable[Mapping[str, Any]]) -> List[Dict[str, Any]]:
 
 def build_data(dynamic_matches: Iterable[Mapping[str, Any]], retrieved_at: str, now: Optional[datetime] = None) -> Dict[str, Any]:
     dynamic = [dict(m) for m in dynamic_matches]
-    # LL is the day view, so it must see the same official Poland calendar rows
-    # that UL sees.  Merge those planned pool fixtures with the concrete CEV
-    # cards; dynamic rows win when CEV has published a result/status update.
-    all_matches = merge_matches(static_poland_matches(retrieved_at), dynamic)
+    # LL is the day view, so it must see the complete official men's pool
+    # calendar, not only Poland's rows. Dynamic CEV cards still win when the
+    # official page publishes a result/status update for a static fixture.
+    all_matches = merge_matches(static_schedule_matches(retrieved_at), dynamic)
     poland = [
         m for m in all_matches
         if "POL" in {((m.get("home") or {}).get("code")), ((m.get("away") or {}).get("code"))}
@@ -512,7 +605,7 @@ def build_data(dynamic_matches: Iterable[Mapping[str, Any]], retrieved_at: str, 
             "poland_match_count": len(poland),
         },
         "coverage": {
-            "daily": "official CEV final-phase pages plus planned Poland pool fixtures from the official calendar PDFs",
+            "daily": "official CEV final-phase pages plus the complete men's pool calendar and planned women's Poland fixtures from the official calendar PDFs",
             "poland": "official CEV 2026 calendar PDFs plus concrete final-phase cards",
             "tbd_policy": "CEV bracket placeholders are omitted until both teams are published",
         },
