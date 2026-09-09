@@ -9,13 +9,14 @@ The dashboard exposes two explicit `SlotRuntime` modules:
   that are currently `live` or are scheduled for the future; past, finished,
   missing, postponed, and malformed rows are excluded. Each row shows the
   Warsaw date and local time.
-- `euro-daily-schedule` → `LL`: all concrete matches currently published by
-  the official CEV final-phase pages **plus the planned Poland pool fixtures
-  from the official calendar PDFs**, grouped by Europe/Warsaw date, but only
-  while they are `live` or scheduled for the future. Finished and invalid rows
-  are omitted. The selected date is the machine’s current Warsaw date; the
-  returned CEV feed may also contain the next published days. Each date group
-  has an explicit full-width schedule table.
+- `euro-daily-schedule` → `LL`: all concrete matches currently published by the
+  official CEV final-phase pages **plus the planned Poland pool fixtures
+  from the official calendar PDFs**, filtered to one Europe/Warsaw calendar
+  day at a time. The module keeps every `live` or future scheduled match from
+  the selected date, omits finished/invalid rows, and falls back to the
+  earliest remaining active day when the selected date has no active rows.
+  LL therefore renders one explicit full-width schedule table, never a stack
+  of future date groups that can be clipped by the card.
 
 ## Sources
 

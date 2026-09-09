@@ -116,6 +116,7 @@
     var envelope = widget && typeof widget === "object" ? widget : {};
     var data = envelope.data && typeof envelope.data === "object" ? envelope.data : {};
     var reference = Number.isFinite(Number(nowMs)) ? Number(nowMs) : Date.now();
+    var selectedDate = text(data.selected_date, "");
     var rows;
     var days = [];
     if (mode === "poland") {
@@ -130,13 +131,26 @@
       }
       if (!days.length) {
         rows = activeOrUpcomingOnly(dedupeAndSort(data.matches), reference);
-        if (rows.length) days = [{ date: rows[0].date, matches: rows }];
+        if (rows.length) {
+          var fallbackDate = rows.filter(function (row) { return row.date === selectedDate; }).length
+            ? selectedDate
+            : rows[0].date;
+          var fallbackRows = rows.filter(function (row) { return row.date === fallbackDate; });
+          days = [{ date: fallbackDate, matches: fallbackRows }];
+        }
+      }
+      // LL is a single-day card: retain every active/upcoming match for the
+      // selected Warsaw date, not one table per future date in the feed.
+      days.sort(function (a, b) { return String(a.date).localeCompare(String(b.date)); });
+      if (days.length > 1) {
+        var selectedDay = days.filter(function (day) { return day.date === selectedDate; })[0];
+        days = [selectedDay || days[0]];
       }
     }
     return {
       status: text(envelope.status, "empty"),
       refreshStatus: text(data.freshness && data.freshness.refresh_status, ""),
-      selectedDate: text(data.selected_date, ""),
+      selectedDate: selectedDate,
       updatedAt: text(envelope.updated_at || data.freshness && data.freshness.retrieved_at, ""),
       timezone: text(data.timezone, WARSAW),
       rows: rows || [],
