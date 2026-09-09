@@ -1136,11 +1136,15 @@
   }
 
 
-  // Ticker text formats. Kept dead-simple on purpose: a kitchen reader
-  // scanning the bottom strip has ~3 seconds per item, so the only fields
-  // we show are WHO and HOW MUCH. No dates, no weekday, no competition
-  // name, no "następny:" / "LIVE:" prefix noise. K/M stays on every
-  // result so women's and men's matches remain distinguishable.
+  // Ticker text formats. Keep the line compact: WHO + HOW MUCH, with the
+  // competition group and Warsaw date in the result's closing parentheses.
+  // No weekday, competition name, or "następny:" / "LIVE:" prefix noise.
+  function tickerDate(m) {
+    var raw = String((m && (m.date || m.warsaw_date || m.sourceDate || m.source_date)) || "");
+    var match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
+    return match ? (match[3] + "." + match[2]) : raw;
+  }
+
   function resultTickerText(m) {
     if (!m) return null;
     var home = teamName(m.home || { name: "Polska" });
@@ -1151,9 +1155,11 @@
             : null);
     if (!score) return null;
     var txt = home + " " + score + " " + away;
-    // Append (K)/(M) when group is known — user wants women vs men
-    // distinguishable at-a-glance on the bottom ticker (2026-06-19).
-    if (m._group === "K" || m._group === "M") txt += " (" + m._group + ")";
+    var details = [];
+    if (m._group === "K" || m._group === "M") details.push(m._group);
+    var date = tickerDate(m);
+    if (date) details.push(date);
+    if (details.length) txt += " (" + details.join(" · ") + ")";
     return txt;
   }
 
@@ -1208,8 +1214,9 @@
     var rows = euroVolleyTickerRows(widgets);
     var items = [];
 
-    // Order: LIVE (if any) → most recent EuroVolley results (latest first,
-    // max 6). Upcoming fixtures belong in UL/LL, not in this compact strip.
+    // Order: LIVE (if any) → the four most recent completed results for
+    // Poland in the current EuroVolley tournament. Upcoming fixtures belong
+    // in UL/LL, not in this compact strip.
 
     // 1. LIVE matches first. Trust the normalized CEV status instead of
     // deriving a live window from start_at; finished matches can have a
@@ -1227,10 +1234,10 @@
     // 2. Completed/current results. The module state contains the official
     // score; trim any per-set breakdown so the ticker stays readable.
     rows.filter(function (m) {
-      return m.status === "finished" || tickerScore(m) != null;
+      return m.status !== "live" && (m.status === "finished" || tickerScore(m) != null);
     }).sort(function (a, b) {
       return tickerStartAt(b).localeCompare(tickerStartAt(a));
-    }).slice(0, 6).forEach(function (m) {
+    }).slice(0, 4).forEach(function (m) {
       var result = Object.assign({}, m, {
         _group: tickerGroup(m),
         score: tickerScore(m)
@@ -1239,8 +1246,9 @@
       if (s) items.push(s);
     });
 
-    if (!items.length) items.push("Brak wyników EuroVolley");
-    track.innerHTML = items.map(function (x) { return '<span>' + esc(x) + '</span>'; }).join('');
+    track.innerHTML = items.length
+      ? items.map(function (x) { return '<span>' + esc(x) + '</span>'; }).join('')
+      : '';
   }
 
   // ---- slot runtime adapters --------------------------------------------

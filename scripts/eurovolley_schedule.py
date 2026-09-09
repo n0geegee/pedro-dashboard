@@ -557,6 +557,46 @@ def _group_days(matches: Iterable[Mapping[str, Any]]) -> List[Dict[str, Any]]:
     return days
 
 
+def _current_competition_id(matches: Iterable[Mapping[str, Any]], current_day: str) -> Optional[str]:
+    """Choose the competition active on the current Warsaw calendar day.
+
+    The women and men EuroVolley editions share one normalized feed. The
+    ticker must not let an older edition leak into the current tournament,
+    so prefer the competition represented on today's schedule. On a rest day,
+    use the nearest future fixture and finally the most recent past fixture.
+    """
+    rows = [dict(match) for match in matches]
+
+    def pick_by_count(candidates: Iterable[Mapping[str, Any]]) -> Optional[str]:
+        counts: Dict[str, int] = {}
+        for match in candidates:
+            competition_id = match.get("competition_id")
+            if competition_id:
+                key = str(competition_id)
+                counts[key] = counts.get(key, 0) + 1
+        if not counts:
+            return None
+        return sorted(counts, key=lambda key: (-counts[key], key))[0]
+
+    current = pick_by_count(match for match in rows if match.get("warsaw_date") == current_day)
+    if current:
+        return current
+
+    future = sorted(
+        (match for match in rows if str(match.get("warsaw_date") or "") > current_day and match.get("competition_id")),
+        key=lambda match: (str(match.get("start_at") or ""), str(match.get("id") or "")),
+    )
+    if future:
+        return str(future[0]["competition_id"])
+
+    past = sorted(
+        (match for match in rows if str(match.get("warsaw_date") or "") < current_day and match.get("competition_id")),
+        key=lambda match: (str(match.get("start_at") or ""), str(match.get("id") or "")),
+        reverse=True,
+    )
+    return str(past[0]["competition_id"]) if past else None
+
+
 def build_data(dynamic_matches: Iterable[Mapping[str, Any]], retrieved_at: str, now: Optional[datetime] = None) -> Dict[str, Any]:
     dynamic = [dict(m) for m in dynamic_matches]
     # LL is the day view, so it must see the complete official men's pool
@@ -568,6 +608,7 @@ def build_data(dynamic_matches: Iterable[Mapping[str, Any]], retrieved_at: str, 
         if "POL" in {((m.get("home") or {}).get("code")), ((m.get("away") or {}).get("code"))}
     ]
     current_day = (now or datetime.now(WARSAW_TZ)).astimezone(WARSAW_TZ).date().isoformat()
+    current_competition_id = _current_competition_id(all_matches, current_day)
     competitions = []
     for gender in ("K", "M"):
         comp = SOURCES[gender]
@@ -589,6 +630,7 @@ def build_data(dynamic_matches: Iterable[Mapping[str, Any]], retrieved_at: str, 
         "edition": EDITION,
         "timezone": "Europe/Warsaw",
         "selected_date": current_day,
+        "current_competition_id": current_competition_id,
         "matches": all_matches,
         "days": _group_days(all_matches),
         "poland_matches": poland,

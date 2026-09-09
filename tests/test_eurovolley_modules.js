@@ -23,14 +23,16 @@ const state = {
   updated_at: "2026-09-06T12:00:00+00:00",
   data: {
     selected_date: "2026-09-06",
+    current_competition_id: "eurovolley-2026-men",
     timezone: "Europe/Warsaw",
     freshness: { refresh_status: "cached_after_probe_error" },
     poland_matches: [
-      { id: "m", gender: "M", status: "scheduled", warsaw_date: "2026-09-10", warsaw_time: "15:00", start_at: "2026-09-10T13:00:00+00:00", home: { name: "Polska", code: "POL" }, away: { name: "Portugalia", code: "POR" }, phase: "Faza grupowa" },
-      { id: "k", gender: "K", status: "scheduled", warsaw_date: "2026-09-12", warsaw_time: "15:00", start_at: "2026-09-12T13:00:00+00:00", home: { name: "Polska", code: "POL" }, away: { name: "Serbia", code: "SRB" }, phase: "Mecz o 3. miejsce" },
-      { id: "live", gender: "M", status: "live", warsaw_date: "2026-09-06", warsaw_time: "13:00", start_at: "2026-09-06T11:00:00+00:00", home: { name: "Polska", code: "POL" }, away: { name: "Włochy", code: "ITA" }, phase: "Faza grupowa" },
-      { id: "finished", gender: "M", status: "finished", score: "3:1", warsaw_date: "2026-09-05", warsaw_time: "15:00", start_at: "2026-09-05T13:00:00+00:00", home: { name: "Polska", code: "POL" }, away: { name: "Czechy", code: "CZE" }, phase: "Faza grupowa" },
-      { id: "malformed", gender: "K", status: "scheduled", warsaw_date: "2026-09-20", warsaw_time: "15:00", start_at: "not-a-timestamp", home: { name: "Polska", code: "POL" }, away: { name: "Belgia", code: "BEL" }, phase: "Faza grupowa" }
+      { id: "m", gender: "M", competition_id: "eurovolley-2026-men", status: "scheduled", warsaw_date: "2026-09-10", warsaw_time: "15:00", start_at: "2026-09-10T13:00:00+00:00", home: { name: "Polska", code: "POL" }, away: { name: "Portugalia", code: "POR" }, phase: "Faza grupowa" },
+      { id: "k", gender: "K", competition_id: "eurovolley-2026-women", status: "scheduled", warsaw_date: "2026-09-12", warsaw_time: "15:00", start_at: "2026-09-12T13:00:00+00:00", home: { name: "Polska", code: "POL" }, away: { name: "Serbia", code: "SRB" }, phase: "Mecz o 3. miejsce" },
+      { id: "live", gender: "M", competition_id: "eurovolley-2026-men", status: "live", warsaw_date: "2026-09-06", warsaw_time: "13:00", start_at: "2026-09-06T11:00:00+00:00", home: { name: "Polska", code: "POL" }, away: { name: "Włochy", code: "ITA" }, phase: "Faza grupowa" },
+      { id: "finished", gender: "K", competition_id: "eurovolley-2026-women", status: "finished", score: "3:1", warsaw_date: "2026-09-05", warsaw_time: "15:00", start_at: "2026-09-05T13:00:00+00:00", home: { name: "Polska", code: "POL" }, away: { name: "Czechy", code: "CZE" }, phase: "Faza grupowa" },
+      { id: "finished-men", gender: "M", competition_id: "eurovolley-2026-men", status: "finished", score: "3:2", warsaw_date: "2026-09-04", warsaw_time: "15:00", start_at: "2026-09-04T13:00:00+00:00", home: { name: "Polska", code: "POL" }, away: { name: "Bułgaria", code: "BUL" }, phase: "Faza grupowa" },
+      { id: "malformed", gender: "K", competition_id: "eurovolley-2026-women", status: "scheduled", warsaw_date: "2026-09-20", warsaw_time: "15:00", start_at: "not-a-timestamp", home: { name: "Polska", code: "POL" }, away: { name: "Belgia", code: "BEL" }, phase: "Faza grupowa" }
     ],
     days: [
       { date: "2026-09-10", matches: [{ id: "m", gender: "M", status: "scheduled", warsaw_date: "2026-09-10", warsaw_time: "15:00", start_at: "2026-09-10T13:00:00+00:00", home: { name: "Polska", code: "POL" }, away: { name: "Portugalia", code: "POR" }, phase: "Faza grupowa" }] },
@@ -68,17 +70,53 @@ assert.ok(!Array.from(daily.days).some(day => Array.from(day.matches).some(row =
 
 const ticker = modules.normalizeTicker(state);
 assert.strictEqual(ticker.status, "stale");
-assert.strictEqual(ticker.rows.length, 5);
-assert.ok(ticker.rows.some(row => row.id === "finished"));
+assert.strictEqual(ticker.rows.length, 3);
+assert.ok(ticker.rows.some(row => row.id === "finished-men"));
 assert.ok(ticker.rows.some(row => row.id === "live"));
-assert.strictEqual(ticker.rows.find(row => row.id === "finished").score, "3:1");
+assert.strictEqual(ticker.rows.find(row => row.id === "finished-men").score, "3:2");
+assert.ok(!ticker.rows.some(row => row.id === "finished"));
+assert.ok(!ticker.rows.some(row => row.gender === "K"));
 assert.ok(!Array.from(poland.rows).some(row => row.id === "finished"));
+
+const fallbackState = {
+  status: "ok",
+  data: {
+    selected_date: state.data.selected_date,
+    current_competition_id: state.data.current_competition_id,
+    matches: [
+      state.data.poland_matches.find(row => row.id === "finished-men"),
+      { id: "non-poland", gender: "M", competition_id: "eurovolley-2026-men", status: "finished", score: "3:0", warsaw_date: "2026-09-04", warsaw_time: "15:00", start_at: "2026-09-04T13:00:00+00:00", home: { name: "Bułgaria", code: "BUL" }, away: { name: "Serbia", code: "SRB" }, phase: "Faza grupowa" }
+    ]
+  }
+};
+assert.deepStrictEqual(
+  Array.from(modules.normalizeTicker(fallbackState).rows, row => row.id),
+  ["finished-men"]
+);
 
 const appSource = fs.readFileSync(require("path").join(__dirname, "../app/static/app.js"), "utf8");
 const tickerSource = appSource.slice(appSource.indexOf("function renderTicker"), appSource.indexOf("// ---- slot runtime adapters"));
 assert.ok(appSource.includes("modules.normalizeTicker"));
-assert.ok(tickerSource.includes("Brak wyników EuroVolley"));
+assert.ok(tickerSource.includes("slice(0, 4)"));
+assert.ok(tickerSource.includes("track.innerHTML = items.length"));
+assert.ok(appSource.includes("function tickerDate"));
+assert.ok(appSource.includes("m.date || m.warsaw_date"));
+assert.ok(!tickerSource.includes("Brak wyników EuroVolley"));
 assert.ok(!tickerSource.includes("recent_results"));
+const formatterSandbox = { teamName: team => team.name };
+const formatterStart = appSource.indexOf("function tickerDate");
+const formatterEnd = appSource.indexOf("function euroVolleyTickerRows");
+vm.runInNewContext(appSource.slice(formatterStart, formatterEnd), formatterSandbox);
+assert.strictEqual(
+  formatterSandbox.resultTickerText({
+    home: { name: "Polska" },
+    away: { name: "Włochy" },
+    score: "3:1",
+    date: "2026-09-04",
+    _group: "M"
+  }),
+  "Polska 3:1 Włochy (M · 04.09)"
+);
 assert.ok(source.includes('"euro-schedule__table"'));
 assert.ok(source.includes('"euro-schedule__date"'));
 

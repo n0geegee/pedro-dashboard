@@ -105,6 +105,7 @@ class EuroVolleyScheduleTests(unittest.TestCase):
         data = build_data(rows, STAMP, datetime(2026, 9, 6, 12, tzinfo=timezone.utc))
         self.assertEqual({item["gender"] for item in data["competitions"]}, {"K", "M"})
         self.assertEqual(data["selected_date"], "2026-09-06")
+        self.assertEqual(data["current_competition_id"], "eurovolley-2026-women")
         self.assertTrue(any(row["official_code"] == "WFF-01" for row in data["poland_matches"]))
         self.assertTrue(all(row["timezone"] == "Europe/Warsaw" for row in data["matches"]))
         self.assertEqual(
