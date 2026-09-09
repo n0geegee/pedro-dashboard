@@ -35,8 +35,10 @@ const state = {
     days: [
       { date: "2026-09-10", matches: [{ id: "m", gender: "M", status: "scheduled", warsaw_date: "2026-09-10", warsaw_time: "15:00", start_at: "2026-09-10T13:00:00+00:00", home: { name: "Polska", code: "POL" }, away: { name: "Portugalia", code: "POR" }, phase: "Faza grupowa" }] },
       { date: "2026-09-06", matches: [
+        { id: "finished-today", gender: "M", status: "finished", score: "3:0", warsaw_date: "2026-09-06", warsaw_time: "10:00", start_at: "2026-09-06T08:00:00+00:00", home: { name: "Bułgaria", code: "BUL" }, away: { name: "Dania", code: "DEN" }, phase: "Faza grupowa" },
         { id: "live", gender: "M", status: "live", warsaw_date: "2026-09-06", warsaw_time: "13:00", start_at: "2026-09-06T11:00:00+00:00", home: { name: "Polska", code: "POL" }, away: { name: "Włochy", code: "ITA" }, phase: "Faza grupowa" },
-        { id: "same-day", gender: "K", status: "scheduled", warsaw_date: "2026-09-06", warsaw_time: "14:30", start_at: "2026-09-06T12:30:00+00:00", home: { name: "Niemcy", code: "GER" }, away: { name: "Belgia", code: "BEL" }, phase: "Faza grupowa" }
+        { id: "same-day", gender: "K", status: "scheduled", warsaw_date: "2026-09-06", warsaw_time: "14:30", start_at: "2026-09-06T12:30:00+00:00", home: { name: "Niemcy", code: "GER" }, away: { name: "Belgia", code: "BEL" }, phase: "Faza grupowa" },
+        { id: "same-time", gender: "M", status: "scheduled", warsaw_date: "2026-09-06", warsaw_time: "14:30", start_at: "2026-09-06T12:30:00+00:00", home: { name: "Francja", code: "FRA" }, away: { name: "Szwajcaria", code: "SUI" }, phase: "Faza grupowa" }
       ] },
       { date: "2026-09-05", matches: [{ id: "finished", gender: "M", status: "finished", warsaw_date: "2026-09-05", warsaw_time: "15:00", start_at: "2026-09-05T13:00:00+00:00", home: { name: "Polska", code: "POL" }, away: { name: "Czechy", code: "CZE" }, phase: "Faza grupowa" }] }
     ]
@@ -58,10 +60,11 @@ assert.ok(!Array.from(poland.rows).some(row => row.id === "finished" || row.id =
 const daily = modules.normalizeDaily(state, fixedNow);
 assert.strictEqual(daily.selectedDate, "2026-09-06");
 assert.deepStrictEqual(Array.from(daily.days, day => day.date), ["2026-09-06"]);
-assert.deepStrictEqual(Array.from(daily.days[0].matches, row => row.id), ["live", "same-day"]);
+assert.deepStrictEqual(Array.from(daily.days[0].matches, row => row.id), ["finished-today", "live", "same-day", "same-time"]);
 assert.ok(Array.from(daily.days[0].matches).every(row => row.date === daily.selectedDate));
-assert.ok(Array.from(daily.days[0].matches).every(row => row.status === "live" || row.status === "scheduled"));
-assert.ok(!Array.from(daily.days).some(day => Array.from(day.matches).some(row => row.id === "finished" || row.id === "m")));
+assert.ok(daily.days[0].matches.some(row => row.id === "finished-today"));
+assert.strictEqual(daily.days[0].matches.filter(row => row.time === "14:30").length, 2);
+assert.ok(!Array.from(daily.days).some(day => Array.from(day.matches).some(row => row.id === "m")));
 
 const ticker = modules.normalizeTicker(state);
 assert.strictEqual(ticker.status, "stale");

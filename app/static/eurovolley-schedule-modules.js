@@ -112,6 +112,15 @@
     });
   }
 
+  function chooseDailyDay(days, selectedDate, nowMs) {
+    var selected = days.filter(function (day) { return day.date === selectedDate; })[0];
+    if (selected) return selected;
+    var active = days.filter(function (day) {
+      return activeOrUpcomingOnly(day.matches, nowMs).length > 0;
+    });
+    return active[0] || days[0] || null;
+  }
+
   function normalizeWidget(widget, mode, nowMs) {
     var envelope = widget && typeof widget === "object" ? widget : {};
     var data = envelope.data && typeof envelope.data === "object" ? envelope.data : {};
@@ -125,7 +134,10 @@
       if (Array.isArray(data.days)) {
         data.days.forEach(function (day) {
           if (!day || typeof day !== "object") return;
-          var dayRows = activeOrUpcomingOnly(dedupeAndSort(day.matches), reference);
+          // LL is the daily plan, not an upcoming-only list: preserve every
+          // match for the selected Warsaw day, including finished rows and
+          // distinct matches sharing the same start time.
+          var dayRows = dedupeAndSort(day.matches);
           if (dayRows.length) days.push({ date: text(day.date, dayRows[0].date), matches: dayRows });
         });
       }
@@ -139,13 +151,12 @@
           days = [{ date: fallbackDate, matches: fallbackRows }];
         }
       }
-      // LL is a single-day card: retain every active/upcoming match for the
-      // selected Warsaw date, not one table per future date in the feed.
+      // LL is a single-day card. Prefer the backend's current Warsaw date
+      // even when all of its matches are finished; only fall back to the
+      // first active/upcoming day when that date is absent from the feed.
       days.sort(function (a, b) { return String(a.date).localeCompare(String(b.date)); });
-      if (days.length > 1) {
-        var selectedDay = days.filter(function (day) { return day.date === selectedDate; })[0];
-        days = [selectedDay || days[0]];
-      }
+      var dayToShow = chooseDailyDay(days, selectedDate, reference);
+      days = dayToShow ? [dayToShow] : [];
     }
     return {
       status: text(envelope.status, "empty"),
