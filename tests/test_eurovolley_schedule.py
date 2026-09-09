@@ -85,9 +85,19 @@ class EuroVolleyScheduleTests(unittest.TestCase):
         data = build_data(rows, STAMP, datetime(2026, 9, 6, 12, tzinfo=timezone.utc))
         self.assertEqual({item["gender"] for item in data["competitions"]}, {"K", "M"})
         self.assertEqual(data["selected_date"], "2026-09-06")
-        self.assertEqual([day["date"] for day in data["days"]], ["2026-09-06", "2026-09-09"])
         self.assertTrue(any(row["official_code"] == "WFF-01" for row in data["poland_matches"]))
         self.assertTrue(all(row["timezone"] == "Europe/Warsaw" for row in data["matches"]))
+        self.assertEqual(
+            [day["date"] for day in data["days"]],
+            [
+                "2026-08-22", "2026-08-24", "2026-08-25", "2026-08-27", "2026-08-28",
+                "2026-09-06", "2026-09-09", "2026-09-10", "2026-09-12", "2026-09-13",
+                "2026-09-15", "2026-09-16",
+            ],
+        )
+        sep10 = next(day for day in data["days"] if day["date"] == "2026-09-10")
+        self.assertTrue(any(row["home"]["code"] == "POL" for row in sep10["matches"]))
+        self.assertTrue(any(row["id"] == "M-calendar-M-2026-09-10-POL-POR" for row in data["matches"]))
 
 
 if __name__ == "__main__":

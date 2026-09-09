@@ -466,12 +466,19 @@ def _group_days(matches: Iterable[Mapping[str, Any]]) -> List[Dict[str, Any]]:
 
 def build_data(dynamic_matches: Iterable[Mapping[str, Any]], retrieved_at: str, now: Optional[datetime] = None) -> Dict[str, Any]:
     dynamic = [dict(m) for m in dynamic_matches]
-    poland = merge_matches(static_poland_matches(retrieved_at), dynamic)
+    # LL is the day view, so it must see the same official Poland calendar rows
+    # that UL sees.  Merge those planned pool fixtures with the concrete CEV
+    # cards; dynamic rows win when CEV has published a result/status update.
+    all_matches = merge_matches(static_poland_matches(retrieved_at), dynamic)
+    poland = [
+        m for m in all_matches
+        if "POL" in {((m.get("home") or {}).get("code")), ((m.get("away") or {}).get("code"))}
+    ]
     current_day = (now or datetime.now(WARSAW_TZ)).astimezone(WARSAW_TZ).date().isoformat()
     competitions = []
     for gender in ("K", "M"):
         comp = SOURCES[gender]
-        comp_matches = [m for m in dynamic if m.get("gender") == gender]
+        comp_matches = [m for m in all_matches if m.get("gender") == gender]
         competitions.append({
             "id": comp["id"],
             "name": comp["name"],
@@ -489,9 +496,9 @@ def build_data(dynamic_matches: Iterable[Mapping[str, Any]], retrieved_at: str, 
         "edition": EDITION,
         "timezone": "Europe/Warsaw",
         "selected_date": current_day,
-        "matches": dynamic,
-        "days": _group_days(dynamic),
-        "poland_matches": [m for m in poland if "POL" in {((m.get("home") or {}).get("code")), ((m.get("away") or {}).get("code"))}],
+        "matches": all_matches,
+        "days": _group_days(all_matches),
+        "poland_matches": poland,
         "competitions": competitions,
         "official_sources": [
             {"gender": gender, "name": SOURCES[gender]["name"], "url": SOURCES[gender]["official_url"], "calendar_url": SOURCES[gender]["calendar_url"]}
@@ -501,11 +508,11 @@ def build_data(dynamic_matches: Iterable[Mapping[str, Any]], retrieved_at: str, 
             "refresh_status": "live",
             "retrieved_at": retrieved_at,
             "last_success_at": retrieved_at,
-            "source_match_count": len(dynamic),
-            "poland_match_count": len([m for m in poland if "POL" in {((m.get("home") or {}).get("code")), ((m.get("away") or {}).get("code"))}]),
+            "source_match_count": len(all_matches),
+            "poland_match_count": len(poland),
         },
         "coverage": {
-            "daily": "official CEV final-phase pages; concrete current-day/current-leg cards only",
+            "daily": "official CEV final-phase pages plus planned Poland pool fixtures from the official calendar PDFs",
             "poland": "official CEV 2026 calendar PDFs plus concrete final-phase cards",
             "tbd_policy": "CEV bracket placeholders are omitted until both teams are published",
         },

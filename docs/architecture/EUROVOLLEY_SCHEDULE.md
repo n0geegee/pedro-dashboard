@@ -10,7 +10,8 @@ The dashboard exposes two explicit `SlotRuntime` modules:
   missing, postponed, and malformed rows are excluded. Each row shows the
   Warsaw date and local time.
 - `euro-daily-schedule` → `LL`: all concrete matches currently published by
-  the official CEV final-phase pages, grouped by Europe/Warsaw date, but only
+  the official CEV final-phase pages **plus the planned Poland pool fixtures
+  from the official calendar PDFs**, grouped by Europe/Warsaw date, but only
   while they are `live` or scheduled for the future. Finished and invalid rows
   are omitted. The selected date is the machine’s current Warsaw date; the
   returned CEV feed may also contain the next published days. Each date group
@@ -39,7 +40,8 @@ contains:
 - `kind: "eurovolley_schedule"`, `edition: 2026`, `timezone:
   "Europe/Warsaw"`;
 - `competitions[]` with both `gender: "K"` and `gender: "M"` competitions;
-- `matches[]` and `days[]` for concrete CEV current/future published matches;
+- `matches[]` and `days[]` for concrete CEV current/future published matches
+  plus the planned Poland pool fixtures from the official calendar PDFs;
 - `poland_matches[]` for Poland’s K/M pool calendar and concrete final-phase
   matches;
 - normalized `home`/`away` teams, `phase`, `source_date`, `source_time`,
