@@ -70,7 +70,7 @@ if [[ -f "$PHOTOS_PID_FILE" ]]; then
     photos_owned=1
   fi
 fi
-for probe in refresh-system-status.py refresh-hermes-status.py refresh-openviking-status.py refresh-season-skin.py refresh-weather-status.py refresh-route-status.py refresh-polsat-status.py refresh-photos-slideshow.py refresh-kamila-calendar.py refresh-vnl-volleyball.py; do
+for probe in refresh-system-status.py refresh-hermes-status.py refresh-openviking-status.py refresh-season-skin.py refresh-weather-status.py refresh-route-status.py refresh-polsat-status.py refresh-photos-slideshow.py refresh-kamila-calendar.py refresh-vnl-volleyball.py refresh-eurovolley.py; do
   if [[ -f "$SCRIPT_DIR/$probe" ]]; then
     if [[ "$probe" == "refresh-photos-slideshow.py" ]] && [[ "$photos_owned" == "1" ]]; then
       continue

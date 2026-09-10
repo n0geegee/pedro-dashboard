@@ -42,10 +42,10 @@ import signal
 import socketserver  # noqa: F401  (kept for stdlib parity with plan)
 import threading
 import time
-from datetime import datetime, time as dtime, timezone
+from datetime import datetime, timezone
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, Iterator, List, Tuple
 from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
 
@@ -119,6 +119,7 @@ STATE_FILES: Dict[str, str] = {
     "route": "route.json",
     "calendar": "calendar.json",
     "volleyball": "volleyball.json",
+    "eurovolley": "eurovolley.json",
     "media": "media.json",
     "ll_tbd": "ll_tbd.json",
     "skin": "skin.json",
@@ -308,48 +309,139 @@ def _parse_iso_utc(value: Any) -> datetime | None:
     return stamp.astimezone(timezone.utc)
 
 
-def _poland_match_today(now: datetime | None = None) -> bool:
-    """True iff volleyball.json has any Poland match whose start_at (UTC) lands
-    in the current local Warsaw day window (00:00-23:59 Europe/Warsaw).
+_POLAND_IDENTIFIERS = {
+    "pl",
+    "pol",
+    "poland",
+    "polska",
+}
+_MATCH_START_KEYS = (
+    "start_at",
+    "startAt",
+    "scheduled_at",
+    "scheduledAt",
+    "starts_at",
+    "datetime",
+)
 
-    Scans both volleyball.men and volleyball.women for a match where either
-    home.flag == "pl" or away.flag == "pl". The scan is tolerant of missing
-    or malformed state files — a missing volleyball.json simply yields False.
+
+def _team_strings(team: Any) -> List[str]:
+    if isinstance(team, str):
+        return [team]
+    if not isinstance(team, dict):
+        return []
+    values: List[str] = []
+    for key in (
+        "flag",
+        "code",
+        "country_code",
+        "iso_code",
+        "name",
+        "source_name",
+        "team",
+        "short_name",
+    ):
+        value = team.get(key)
+        if isinstance(value, str):
+            values.append(value)
+    return values
+
+
+def _is_team_value(value: Any) -> bool:
+    return bool(_team_strings(value))
+
+
+def _is_poland_team(value: Any) -> bool:
+    for raw in _team_strings(value):
+        normalized = re.sub(r"[^a-z0-9]+", " ", raw.casefold()).strip()
+        if normalized in _POLAND_IDENTIFIERS:
+            return True
+        if normalized.startswith("poland ") or normalized.startswith("polska "):
+            return True
+    return False
+
+
+def _iter_match_records(value: Any) -> Iterator[Dict[str, Any]]:
+    """Yield match-shaped dictionaries from any registered widget state.
+
+    The detector deliberately does not inspect competition names. A future
+    friendly or a new official tournament is handled as soon as its state
+    feed exposes the same home/away + timestamp shape.
     """
-    widget = load_widget("volleyball")
-    data = widget.get("data") if isinstance(widget, dict) else None
-    if not isinstance(data, dict):
-        return False
-    groups: List[List[Dict[str, Any]]] = []
-    for key in ("men", "women"):
-        group = data.get(key)
-        if isinstance(group, list):
-            groups.append(group)
-    if not groups:
-        return False
+    if isinstance(value, dict):
+        home = value.get("home")
+        away = value.get("away")
+        if _is_team_value(home) and _is_team_value(away):
+            yield value
+        for child in value.values():
+            yield from _iter_match_records(child)
+    elif isinstance(value, list):
+        for child in value:
+            yield from _iter_match_records(child)
+
+
+def _match_lands_on_warsaw_day(match: Dict[str, Any], target_date: Any) -> bool:
+    for key in _MATCH_START_KEYS:
+        stamp = _parse_iso_utc(match.get(key))
+        if stamp is not None:
+            return stamp.astimezone(WARSAW_TZ).date() == target_date
+
+    # Some source adapters publish the already-normalized Warsaw date even
+    # while the source timestamp is temporarily unavailable. This is safe to
+    # use; a bare source-local date is intentionally not treated as Warsaw.
+    for key in ("warsaw_date", "local_date", "poland_date"):
+        value = match.get(key)
+        if isinstance(value, str) and value == target_date.isoformat():
+            return True
+
+    source_date = match.get("source_date")
+    source_time = match.get("source_time")
+    venue = match.get("venue")
+    venue_tz = venue.get("timezone") if isinstance(venue, dict) else None
+    venue_tz = venue_tz or match.get("source_timezone")
+    if isinstance(source_date, str) and isinstance(source_time, str) and isinstance(venue_tz, str):
+        parsed = None
+        for fmt in ("%Y-%m-%d %H:%M", "%d/%m/%Y %H:%M", "%d/%m %H:%M"):
+            try:
+                parsed = datetime.strptime(f"{source_date} {source_time}", fmt)
+                if fmt == "%d/%m %H:%M":
+                    parsed = parsed.replace(year=target_date.year)
+                break
+            except ValueError:
+                continue
+        if parsed is not None:
+            try:
+                local_stamp = parsed.replace(tzinfo=ZoneInfo(venue_tz)).astimezone(WARSAW_TZ)
+            except (KeyError, ValueError):
+                local_stamp = None
+            if local_stamp is not None:
+                return local_stamp.date() == target_date
+    return False
+
+
+def _poland_match_today(now: datetime | None = None) -> bool:
+    """True when any registered match feed has a Poland match today.
+
+    The scan covers every state widget, not just the VNL ``men``/``women``
+    arrays. Competition, gender, phase, and status are deliberately ignored:
+    EuroVolley finals, friendlies, and future competitions all activate the
+    same match-day skin. Malformed or missing state is skipped safely.
+    """
     if now is None:
-        now = datetime.now(WARSAW_TZ)
+        local_now = datetime.now(WARSAW_TZ)
+    elif now.tzinfo is None:
+        local_now = now.replace(tzinfo=WARSAW_TZ)
     else:
-        now = now.astimezone(WARSAW_TZ)
-    day_start = datetime.combine(now.date(), dtime.min, tzinfo=WARSAW_TZ)
-    day_end = datetime.combine(now.date(), dtime.max, tzinfo=WARSAW_TZ)
-    for group in groups:
-        for match in group:
-            if not isinstance(match, dict):
+        local_now = now.astimezone(WARSAW_TZ)
+    target_date = local_now.date()
+
+    for widget_name in STATE_FILES:
+        widget = load_widget(widget_name)
+        data = widget.get("data") if isinstance(widget, dict) else None
+        for match in _iter_match_records(data):
+            if not (_is_poland_team(match.get("home")) or _is_poland_team(match.get("away"))):
                 continue
-            home = match.get("home") or {}
-            away = match.get("away") or {}
-            is_poland = (
-                (isinstance(home, dict) and home.get("flag") == "pl")
-                or (isinstance(away, dict) and away.get("flag") == "pl")
-            )
-            if not is_poland:
-                continue
-            stamp = _parse_iso_utc(match.get("start_at"))
-            if stamp is None:
-                continue
-            local_stamp = stamp.astimezone(WARSAW_TZ)
-            if day_start <= local_stamp <= day_end:
+            if _match_lands_on_warsaw_day(match, target_date):
                 return True
     return False
 
@@ -358,8 +450,8 @@ def _render_index_html(raw_html: str) -> str:
     """Inject the server-computed body attributes into the static index.html.
 
     The static template carries a {{pl_matchday}} placeholder in the <body>
-    tag. We replace it with a real "1" or "0" based on the volleyball widget
-    state. If the placeholder is missing (older template), we fall back to a
+    tag. We replace it with a real "1" or "0" based on all registered match
+    feeds. If the placeholder is missing (older template), we fall back to a
     regex-based injection on the <body> tag.
     """
     flag = "1" if _poland_match_today() else "0"
