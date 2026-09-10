@@ -25,6 +25,8 @@ PEDRO_HOME="${PEDRO_HOME:-$HOME}"
 PEDRO_STATE_DIR="${PEDRO_STATE_DIR:-$PEDRO_HOME/.local/state/pedro_dashboard}"
 PEDRO_LOG_DIR="${PEDRO_LOG_DIR:-$PEDRO_STATE_DIR/logs}"
 PEDRO_RUN_DIR="${PEDRO_RUN_DIR:-$PEDRO_STATE_DIR/run}"
+PEDRO_DISPLAY_CONTROL_FILE="${PEDRO_DISPLAY_CONTROL_FILE:-$PEDRO_STATE_DIR/display-control.json}"
+export PEDRO_DISPLAY_CONTROL_FILE
 PEDRO_CHROME_PROFILE_DIR="${PEDRO_CHROME_PROFILE_DIR:-$PEDRO_STATE_DIR/chrome-profile}"
 
 PEDRO_HOST="${PEDRO_HOST:-127.0.0.1}"
@@ -88,9 +90,10 @@ export PEDRO_GOOGLE_PHOTOS_REFRESH_SECONDS
 # Raise to 300 for headroom; user can keep adding without re-tuning.
 PEDRO_GOOGLE_PHOTOS_MAX_IMAGES="${PEDRO_GOOGLE_PHOTOS_MAX_IMAGES:-300}"
 export PEDRO_GOOGLE_PHOTOS_MAX_IMAGES
-# User wants 5 s/photo so the full 220-item album cycles in ~18 min
-# instead of ~165 min. Default in script is 45 s.
-PEDRO_GOOGLE_PHOTOS_SLIDE_SECONDS="${PEDRO_GOOGLE_PHOTOS_SLIDE_SECONDS:-3}"
+# User wants 2 s/photo so the full album cycles quickly while the
+# state-refresher remains at its slower dashboard cadence. Default in the
+# standalone probe remains a conservative fallback for manual use.
+PEDRO_GOOGLE_PHOTOS_SLIDE_SECONDS="${PEDRO_GOOGLE_PHOTOS_SLIDE_SECONDS:-2}"
 export PEDRO_GOOGLE_PHOTOS_SLIDE_SECONDS
 
 # --- helpers --------------------------------------------------------------

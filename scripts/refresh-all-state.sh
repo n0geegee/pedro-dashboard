@@ -57,7 +57,7 @@ fi
 # Live probes: overwrite mock baseline with real operational/user state.
 # refresh-photos-slideshow.py is skipped here when photos-rotator.sh is
 # already running, because that rotator calls the probe every slide_seconds
-# (5s) on its own loop. Running it from both loops at the same time
+# (2s) on its own loop. Running it from both loops at the same time
 # produces a race on media.json.slideshow.current that makes the kiosk
 # occasionally skip a photo. If the rotator is not running, the photos
 # probe still runs here at the 20s state-refresher cadence so the kiosk

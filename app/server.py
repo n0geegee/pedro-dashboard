@@ -58,8 +58,10 @@ from app.config import (
     PRIVACY_MODE,
     STATE_DIR,
     STATIC_DIR,
+    DISPLAY_CONTROL_FILE,
     VERSION,
 )
+from app.display_control import control_envelope as _control_envelope
 from app.state_store import (
     empty_envelope as _empty_envelope,
     is_stale as _is_stale,
@@ -496,7 +498,19 @@ def load_aggregated_state() -> Dict[str, Any]:
         # `data-pl-matchday` attribute injected into <body> by _render_index_html.
         # Computed against Europe/Warsaw local-day window (00:00-23:59).
         "poland_match_today": _poland_match_today(),
+        "display_control": _control_envelope(DISPLAY_CONTROL_FILE),
         "widgets": widgets,
+    }
+
+
+def load_media_payload() -> Dict[str, Any]:
+    """Return the small, fast-polling payload used by the photo renderer."""
+    media = load_widget("media")
+    return {
+        "status": media.get("status", "error"),
+        "updated_at": media.get("updated_at"),
+        "media": media,
+        "display_control": _control_envelope(DISPLAY_CONTROL_FILE),
     }
 
 
@@ -596,6 +610,12 @@ class PedroHandler(BaseHTTPRequestHandler):
                 return
             if path == "/api/state":
                 self._send_json(HTTPStatus.OK, load_aggregated_state(), send_body=send_body)
+                return
+            if path == "/api/display-control":
+                self._send_json(HTTPStatus.OK, _control_envelope(DISPLAY_CONTROL_FILE), send_body=send_body)
+                return
+            if path == "/api/media":
+                self._send_json(HTTPStatus.OK, load_media_payload(), send_body=send_body)
                 return
             if path == "/api/voice_console":
                 self._send_json(HTTPStatus.OK, load_widget("voice_console"), send_body=send_body)

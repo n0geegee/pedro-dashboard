@@ -5,13 +5,13 @@
 (function () {
   "use strict";
 
-  // REFRESH_MS is aligned with photos-rotator.sh (slide_seconds, default
-  // 5s) so the kiosk loop picks up exactly one new image per poll. With
-  // the previous 6s cadence, every 5-6 cycles the loop would skip an
-  // image because the rotator had already advanced by two slots between
-  // two polls. 5s keeps the kiosk in lockstep with the rotator.
+  // REFRESH_MS is deliberately slower than the dedicated media poll below.
+  // The full state endpoint fans out to many probes; photos are read through
+  // /api/media at MEDIA_REFRESH_MS so a 2s rotator never gets sampled too late.
   var REFRESH_MS = 3000;
+  var MEDIA_REFRESH_MS = 500;
   var STATE_URL = "/api/state";
+  var MEDIA_URL = "/api/media";
   var HEALTH_URL = "/api/health";
 
   // Replaceable center/right slots. The JSON file is the active assignment;
@@ -38,12 +38,16 @@
   // full-viewport dashboard overlay rather than a browser Fullscreen API call.
   var ROTATION_DEFAULT_DASHBOARD_MS = 60 * 1000;
   var ROTATION_DEFAULT_SLIDESHOW_MS = 300 * 1000;
-  var rotationDashboardMs = readDurationParam("dashboardSeconds", ROTATION_DEFAULT_DASHBOARD_MS);
-  var rotationSlideshowMs = readDurationParam("slideshowSeconds", ROTATION_DEFAULT_SLIDESHOW_MS);
-  var rotationEnabled = readRotationEnabled();
+  var rotationQueryOverride = readRotationQueryOverride();
+  var rotationControl = rotationQueryOverride || defaultRotationControl();
+  var activeMediaWidget = null;
+  var mediaLoopBusy = false;
   var rotationState = {
     mode: "dashboard",
-    switchAt: Date.now() + rotationDashboardMs
+    switchAt: Date.now() + ROTATION_DEFAULT_DASHBOARD_MS,
+    commuteActive: false,
+    cycleStartOverrideMs: null,
+    controlKey: "off"
   };
 
   // ---- helpers ----------------------------------------------------------
@@ -66,9 +70,77 @@
     return Math.min(Math.round(n * 1000), 24 * 60 * 60 * 1000);
   }
 
-  function readRotationEnabled() {
-    var raw = (queryParam("rotation") || queryParam("slideshowRotation") || "off").toLowerCase();
-    return !(raw === "0" || raw === "off" || raw === "false" || raw === "dashboard");
+  function defaultRotationControl() {
+    return {
+      enabled: false,
+      dashboardMs: ROTATION_DEFAULT_DASHBOARD_MS,
+      slideshowMs: ROTATION_DEFAULT_SLIDESHOW_MS,
+      photoSeconds: 2,
+      cycleStartedAtMs: null,
+      generation: 0,
+      valid: false
+    };
+  }
+
+  function readRotationQueryOverride() {
+    var raw = queryParam("rotation") || queryParam("slideshowRotation");
+    if (raw == null) return null;
+    raw = String(raw).toLowerCase();
+    if (raw === "0" || raw === "off" || raw === "false" || raw === "dashboard") {
+      return defaultRotationControl();
+    }
+    return {
+      enabled: true,
+      dashboardMs: readDurationParam("dashboardSeconds", ROTATION_DEFAULT_DASHBOARD_MS),
+      slideshowMs: readDurationParam("slideshowSeconds", ROTATION_DEFAULT_SLIDESHOW_MS),
+      photoSeconds: 2,
+      cycleStartedAtMs: Date.now(),
+      generation: -1,
+      valid: true
+    };
+  }
+
+  function rotationControlFromEnvelope(envelope) {
+    var fallback = defaultRotationControl();
+    if (!envelope || envelope.valid !== true) return fallback;
+    var d = envelope.data;
+    if (!d || d.schema_version !== 1 || d.enabled !== true) return fallback;
+    var dashboardSeconds = Number(d.dashboard_seconds);
+    var slideshowSeconds = Number(d.slideshow_seconds);
+    var photoSeconds = Number(d.photo_seconds);
+    var cycleStartedAtMs = Date.parse(String(d.cycle_started_at || ""));
+    if (!isFinite(dashboardSeconds) || dashboardSeconds <= 0
+        || !isFinite(slideshowSeconds) || slideshowSeconds <= 0
+        || !isFinite(photoSeconds) || photoSeconds <= 0
+        || !isFinite(cycleStartedAtMs)) {
+      return fallback;
+    }
+    return {
+      enabled: true,
+      dashboardMs: Math.min(Math.round(dashboardSeconds * 1000), 24 * 60 * 60 * 1000),
+      slideshowMs: Math.min(Math.round(slideshowSeconds * 1000), 24 * 60 * 60 * 1000),
+      photoSeconds: Math.min(Math.round(photoSeconds), 60),
+      cycleStartedAtMs: cycleStartedAtMs,
+      generation: Number(d.generation) || 0,
+      valid: true
+    };
+  }
+
+  function setRotationControl(envelope) {
+    var next = rotationQueryOverride || rotationControlFromEnvelope(envelope);
+    var nextKey = next.enabled
+      ? String(next.generation) + ":" + String(next.cycleStartedAtMs)
+      : "off";
+    if (nextKey !== rotationState.controlKey) {
+      rotationState.cycleStartOverrideMs = null;
+      rotationState.commuteActive = false;
+      rotationState.controlKey = nextKey;
+    }
+    rotationControl = next;
+    if (!rotationControl.enabled) {
+      rotationState.mode = "dashboard";
+      rotationState.switchAt = Date.now() + ROTATION_DEFAULT_DASHBOARD_MS;
+    }
   }
   function el(tag, attrs, html) {
     var n = document.createElement(tag);
@@ -776,70 +848,64 @@
     var d = getSlideshowData(widget);
     var total = d.total || 42;
     var current = Math.max(1, Math.min(total, d.current || 10));
-
     var imageUrl = d.imageUrl || "";
     var album = d.album || "pedro slideshow";
     var photoClass = slideshowPhotoClass(d.orientation);
+    var root = node && node.querySelector(".slideshow");
 
-    var html = "";
-    html += '<div class="slideshow" data-slideshow-current="' + current + '" data-slideshow-total="' + total + '">';
-    if (imageUrl) {
-      // Two stacked photo layers so we can crossfade between slides without
-      // a black gap when the new WebP is still decoding. Only the inactive
-      // layer's background-image changes per render; the active layer keeps
-      // painting the previous photo until the new one is decoded.
-      html += '<div class="slideshow__stage" data-current-url="' + escAttr(imageUrl) + '">';
-      html +=   '<div class="slideshow__layer slideshow__photo slideshow__photo--image is-active" data-layer="a"></div>';
-      html +=   '<div class="slideshow__layer slideshow__photo slideshow__photo--image" data-layer="b"></div>';
-      html += '</div>';
-    } else {
-      html +=   '<div class="slideshow__photo">';
-      html +=     '<div class="slideshow__skyline"></div>';
-      html +=     '<div class="slideshow__lake"></div>';
-      html +=     '<div class="slideshow__trees"></div>';
-      html +=   '</div>';
+    if (!imageUrl) {
+      if (!root || root.getAttribute("data-slideshow-empty") !== "1") {
+        node.innerHTML = '<div class="slideshow" data-slideshow-empty="1"><div class="slideshow__photo">'
+          + '<div class="slideshow__skyline"></div><div class="slideshow__lake"></div>'
+          + '<div class="slideshow__trees"></div></div>'
+          + '<div class="slideshow__caption"></div><div class="slideshow__counter"></div></div>';
+        root = node.querySelector(".slideshow");
+      }
+      if (root) {
+        setText(root.querySelector(".slideshow__caption"), album);
+        setText(root.querySelector(".slideshow__counter"), current + " / " + total);
+      }
+      return;
     }
-    html +=   '<div class="slideshow__caption">' + esc(album) + '</div>';
-    html +=   '<div class="slideshow__counter">' + current + ' / ' + total + '</div>';
-    html += '</div>';
 
-    node.innerHTML = html;
-    if (imageUrl) {
-      var stageEl = node.querySelector(".slideshow__stage");
-      if (stageEl) {
-        var layers = stageEl.querySelectorAll(".slideshow__layer");
-        for (var i = 0; i < layers.length; i++) {
-          layers[i].className = "slideshow__layer slideshow__photo " + photoClass;
-        }
-        // First render: paint the current photo on layer A, leave B empty,
-        // and start a soft preload of the same URL so Chrome warms its
-        // decoder. Subsequent renders detect that the URL changed via
-        // data-current-url and call applySlideshowPhoto for a true crossfade.
-        var prevUrl = stageEl.getAttribute("data-current-url") || "";
-        // Track whether we have EVER painted a photo into this stage. The
-        // boolean is independent of which URL was last painted so that a first
-        // render with prevUrl="" doesn't skip the paint, and a render with the
-        // same URL as the last one still triggers a preload + initial paint.
-        var everPainted = stageEl.getAttribute("data-ever-painted") === "1";
-        if (!everPainted) {
-          // First paint: just place the image on layer A, no transition.
-          setSlideshowLayerBackground(layers[0], imageUrl);
-          layers[0].classList.add("is-active");
-          layers[1].classList.remove("is-active");
-          stageEl.setAttribute("data-current-url", imageUrl);
-          stageEl.setAttribute("data-ever-painted", "1");
-          var warmImg = new Image();
-          warmImg.decoding = "async";
-          warmImg.src = imageUrl;
-        } else if (prevUrl !== imageUrl) {
-          applySlideshowPhoto(stageEl, imageUrl, d.orientation);
-        } else {
-          // Same URL, just refresh labels. Active layer already painted.
-          layers[0].classList.add("is-active");
-          layers[1].classList.remove("is-active");
-        }
-        }
-        }
+    // Build the two-layer stage once. Replacing node.innerHTML on every media
+    // poll would reset data-ever-painted and make the crossfade impossible.
+    if (!root || !root.querySelector(".slideshow__stage")) {
+      node.innerHTML = '<div class="slideshow">'
+        + '<div class="slideshow__stage" data-current-url="">'
+        + '<div class="slideshow__layer slideshow__photo is-active" data-layer="a"></div>'
+        + '<div class="slideshow__layer slideshow__photo" data-layer="b"></div>'
+        + '</div>'
+        + '<div class="slideshow__caption"></div>'
+        + '<div class="slideshow__counter"></div>'
+        + '</div>';
+      root = node.querySelector(".slideshow");
+    }
+    if (!root) return;
+    root.setAttribute("data-slideshow-current", String(current));
+    root.setAttribute("data-slideshow-total", String(total));
+    setText(root.querySelector(".slideshow__caption"), album);
+    setText(root.querySelector(".slideshow__counter"), current + " / " + total);
+
+    var stageEl = root.querySelector(".slideshow__stage");
+    if (!stageEl) return;
+    var layers = stageEl.querySelectorAll(".slideshow__layer");
+    for (var i = 0; i < layers.length; i++) {
+      var wasActive = layers[i].classList.contains("is-active");
+      layers[i].className = "slideshow__layer " + photoClass;
+      if (wasActive) layers[i].classList.add("is-active");
+    }
+    var prevUrl = stageEl.getAttribute("data-current-url") || "";
+    var everPainted = stageEl.getAttribute("data-ever-painted") === "1";
+    if (!everPainted) {
+      setSlideshowLayerBackground(layers[0], imageUrl);
+      layers[0].classList.add("is-active");
+      layers[1].classList.remove("is-active");
+      stageEl.setAttribute("data-current-url", imageUrl);
+      stageEl.setAttribute("data-ever-painted", "1");
+    } else if (prevUrl !== imageUrl) {
+      applySlideshowPhoto(stageEl, imageUrl, d.orientation);
+    }
   }
 
   function setSlideshowLayerBackground(layerEl, url) {
@@ -860,12 +926,17 @@
     }
     if (!active) active = layers[0];
     if (!inactive) inactive = layers[layers.length - 1];
-    inactive.className = "slideshow__layer slideshow__photo " + photoClass;
+    if (!active || !inactive) return;
+    var requestId = (parseInt(stageEl.getAttribute("data-photo-request") || "0", 10) || 0) + 1;
+    stageEl.setAttribute("data-photo-request", String(requestId));
+    inactive.className = "slideshow__layer " + photoClass;
     setSlideshowLayerBackground(inactive, nextUrl);
     var nextImg = new Image();
     nextImg.decoding = "async";
     var flip = function () {
+      if (stageEl.getAttribute("data-photo-request") !== String(requestId)) return;
       requestAnimationFrame(function () {
+        if (stageEl.getAttribute("data-photo-request") !== String(requestId)) return;
         inactive.classList.add("is-active");
         active.classList.remove("is-active");
       });
@@ -961,53 +1032,45 @@
     else if (d.orientation === "square") photoClass += " fullscreen-slideshow__photo--square";
 
     if (!imageUrl) {
-      overlay.innerHTML = '<div class="fullscreen-slideshow__empty">Brak zdjęć do pełnego ekranu</div>';
+      if (!overlay.querySelector(".fullscreen-slideshow__empty")) {
+        overlay.innerHTML = '<div class="fullscreen-slideshow__empty">Brak zdjęć do pełnego ekranu</div>';
+      }
       return;
     }
 
-    // Two stacked photos so we can crossfade instead of cutting black. The
-    // first render installs both layers in the "stage is current" state;
-    // later renders detect a URL change via data-current-url and call
-    // applyFullscreenPhoto for a true crossfade. The active layer keeps
-    // painting the previous photo until the new WebP finishes decoding.
-    var html = "";
-    html += '<div class="fullscreen-slideshow__stage" data-current-url="' + escAttr(imageUrl) + '">';
-    html +=   '<div class="fullscreen-slideshow__layer fullscreen-slideshow__photo is-active" data-layer="a"></div>';
-    html +=   '<div class="fullscreen-slideshow__layer fullscreen-slideshow__photo" data-layer="b"></div>';
-    html +=   '<div class="fullscreen-slideshow__shade"></div>';
-    html +=   '<div class="fullscreen-slideshow__label">SLIDESHOW</div>';
-    html +=   '<div class="fullscreen-slideshow__meta">';
-    html +=     '<span>' + esc(album) + '</span>';
-    if (total) html += '<span>' + current + ' / ' + total + '</span>';
-    html +=   '</div>';
-    html += '</div>';
-    overlay.innerHTML = html;
+    // Keep the stage alive across the 500ms media poll. Rebuilding the overlay
+    // would discard the active layer and turn every update into a hard cut.
     var stageEl = overlay.querySelector(".fullscreen-slideshow__stage");
-    if (stageEl) {
-      var layers = stageEl.querySelectorAll(".fullscreen-slideshow__layer");
-      for (var i = 0; i < layers.length; i++) {
-        layers[i].className = "fullscreen-slideshow__layer fullscreen-slideshow__photo " + photoClass;
-      }
-      var prevUrl = stageEl.getAttribute("data-prev-url") || "";
-      var everPainted = stageEl.getAttribute("data-ever-painted") === "1";
-      if (!everPainted) {
-        // First paint: just place the image on layer A, no transition.
-        setLayerBackground(layers[0], imageUrl);
-        layers[0].classList.add("is-active");
-        layers[1].classList.remove("is-active");
-        stageEl.setAttribute("data-current-url", imageUrl);
-        stageEl.setAttribute("data-ever-painted", "1");
-      } else if (prevUrl !== imageUrl) {
-        applyFullscreenPhoto(stageEl, imageUrl, d.orientation);
-      } else {
-        layers[0].classList.add("is-active");
-        layers[1].classList.remove("is-active");
-      }
-      // Remember this URL for the next render's diff.
-      stageEl.setAttribute("data-prev-url", imageUrl);
+    if (!stageEl) {
+      overlay.innerHTML = '<div class="fullscreen-slideshow__stage" data-current-url="">'
+        + '<div class="fullscreen-slideshow__layer fullscreen-slideshow__photo" data-layer="a"></div>'
+        + '<div class="fullscreen-slideshow__layer fullscreen-slideshow__photo" data-layer="b"></div>'
+        + '<div class="fullscreen-slideshow__shade"></div>'
+        + '<div class="fullscreen-slideshow__label">SLIDESHOW</div>'
+        + '<div class="fullscreen-slideshow__meta"><span data-meta-album></span><span data-meta-counter></span></div>'
+        + '</div>';
+      stageEl = overlay.querySelector(".fullscreen-slideshow__stage");
     }
-    // Preload + warm up the next image so the swap is instant.
-    preloadNextImage(d);
+    if (!stageEl) return;
+    setText(stageEl.querySelector("[data-meta-album]"), album);
+    setText(stageEl.querySelector("[data-meta-counter]"), total ? current + " / " + total : "");
+    var layers = stageEl.querySelectorAll(".fullscreen-slideshow__layer");
+    for (var i = 0; i < layers.length; i++) {
+      var wasActive = layers[i].classList.contains("is-active");
+      layers[i].className = "fullscreen-slideshow__layer " + photoClass;
+      if (wasActive) layers[i].classList.add("is-active");
+    }
+    var prevUrl = stageEl.getAttribute("data-current-url") || "";
+    var everPainted = stageEl.getAttribute("data-ever-painted") === "1";
+    if (!everPainted) {
+      setLayerBackground(layers[0], imageUrl);
+      layers[0].classList.add("is-active");
+      layers[1].classList.remove("is-active");
+      stageEl.setAttribute("data-current-url", imageUrl);
+      stageEl.setAttribute("data-ever-painted", "1");
+    } else if (prevUrl !== imageUrl) {
+      applyFullscreenPhoto(stageEl, imageUrl, d.orientation);
+    }
   }
 
   function setLayerBackground(layerEl, url) {
@@ -1040,15 +1103,19 @@
     var inactive = pickInactiveLayer(stageEl);
     var active = stageEl.querySelector(".fullscreen-slideshow__layer.is-active") || stageEl.querySelectorAll(".fullscreen-slideshow__layer")[0];
     if (!inactive || !active) return;
-    inactive.className = "fullscreen-slideshow__layer fullscreen-slideshow__photo " + photoClass;
+    var requestId = (parseInt(stageEl.getAttribute("data-photo-request") || "0", 10) || 0) + 1;
+    stageEl.setAttribute("data-photo-request", String(requestId));
+    inactive.className = "fullscreen-slideshow__layer " + photoClass;
     setLayerBackground(inactive, nextUrl);
     var nextImg = new Image();
     nextImg.decoding = "async";
     var flip = function () {
+      if (stageEl.getAttribute("data-photo-request") !== String(requestId)) return;
       // Force a single rAF so the browser registers the new background-image
       // before we toggle opacity — otherwise the crossfade can be skipped on
       // fast hardware.
       requestAnimationFrame(function () {
+        if (stageEl.getAttribute("data-photo-request") !== String(requestId)) return;
         inactive.classList.add("is-active");
         active.classList.remove("is-active");
       });
@@ -1083,8 +1150,10 @@
   }
 
   function updateDisplayRotation(widget) {
-    if (!rotationEnabled) {
+    var control = rotationControl;
+    if (!control || !control.enabled) {
       setDisplayMode("dashboard");
+      document.body.setAttribute("data-display-rotation-next", "");
       return;
     }
     var d = getSlideshowData(widget);
@@ -1098,28 +1167,57 @@
     var now = Date.now();
     // Morning commute window: force dashboard-only and never activate the
     // fullscreen slideshow overlay. The embedded slideshow card on the
-    // dashboard remains untouched. Keep pushing switchAt forward so the
-    // very first tick after 07:40 resumes the normal cycle cleanly
-    // instead of trying to immediately honour a stale switchAt.
+    // dashboard remains untouched. When the guard ends, begin a clean
+    // dashboard phase rather than dropping into a stale slideshow phase.
     if (isCommuteDashboardWindowWarsaw(now)) {
-      rotationState.switchAt = now + rotationDashboardMs;
+      rotationState.commuteActive = true;
+      rotationState.cycleStartOverrideMs = null;
+      rotationState.switchAt = now + control.dashboardMs;
       setDisplayMode("dashboard");
       document.body.setAttribute("data-display-rotation-next", String(rotationState.switchAt));
       return;
     }
-
-    if (now >= rotationState.switchAt) {
-      if (rotationState.mode === "dashboard") {
-        setDisplayMode("slideshow");
-        rotationState.switchAt = now + rotationSlideshowMs;
-      } else {
-        setDisplayMode("dashboard");
-        rotationState.switchAt = now + rotationDashboardMs;
-      }
-    } else {
-      setDisplayMode(rotationState.mode);
+    if (rotationState.commuteActive) {
+      rotationState.commuteActive = false;
+      rotationState.cycleStartOverrideMs = now;
     }
+
+    var cycleStart = rotationState.cycleStartOverrideMs || control.cycleStartedAtMs;
+    if (!isFinite(cycleStart) || now < cycleStart) {
+      rotationState.mode = "dashboard";
+      rotationState.switchAt = now + control.dashboardMs;
+      setDisplayMode("dashboard");
+      document.body.setAttribute("data-display-rotation-next", String(rotationState.switchAt));
+      return;
+    }
+    var plan = planDisplayRotation(control, now, cycleStart);
+    rotationState.mode = plan.mode;
+    rotationState.switchAt = plan.nextAtMs;
+    setDisplayMode(rotationState.mode);
     document.body.setAttribute("data-display-rotation-next", String(rotationState.switchAt));
+  }
+
+  function planDisplayRotation(control, nowMs, cycleStartMs) {
+    var planner = window.PedroDisplayRotation;
+    if (planner && typeof planner.plan === "function") {
+      return planner.plan({
+        enabled: control.enabled,
+        dashboardMs: control.dashboardMs,
+        slideshowMs: control.slideshowMs,
+        cycleStartedAtMs: cycleStartMs
+      }, nowMs);
+    }
+    var dashboardMs = control.dashboardMs;
+    var slideshowMs = control.slideshowMs;
+    var cycleMs = dashboardMs + slideshowMs;
+    var phase = (nowMs - cycleStartMs) % cycleMs;
+    var inDashboard = phase < dashboardMs;
+    var remaining = inDashboard ? dashboardMs - phase : cycleMs - phase;
+    return {
+      mode: inDashboard ? "dashboard" : "slideshow",
+      nextAtMs: nowMs + Math.max(1, remaining),
+      reason: "cycle"
+    };
   }
 
   // ---- escape utilities -------------------------------------------------
@@ -1383,6 +1481,9 @@
   function applyState(state) {
     if (!state || !state.widgets) return;
     var w = state.widgets;
+    setRotationControl(state.display_control);
+    activeMediaWidget = w.media || activeMediaWidget;
+    document.body.setAttribute("data-display-control", rotationControl.enabled ? "on" : "off");
     // URL/localStorage override wins over the state-driven skin so a
     // user (or a tester) can preview a skin without changing server state.
     var urlSkin = applyUrlSkinOverride();
@@ -1445,6 +1546,37 @@
     applyState(state);
   }
 
+  function photosSlotIsActive() {
+    if (!slotRuntime) return true;
+    try {
+      var assignment = slotRuntime.getLayout().slots.LR;
+      return !!assignment && assignment.enabled !== false && assignment.module === "photos";
+    } catch (e) {
+      return false;
+    }
+  }
+
+  async function mediaLoop() {
+    if (mediaLoopBusy) return;
+    mediaLoopBusy = true;
+    try {
+      var payload = await safeFetch(MEDIA_URL);
+      if (!payload || !payload.media) return;
+      setRotationControl(payload.display_control);
+      rotationControl = rotationQueryOverride || rotationControl;
+      activeMediaWidget = payload.media;
+      document.body.setAttribute("data-display-control", rotationControl.enabled ? "on" : "off");
+      if (photosSlotIsActive()) {
+        var host = resolveSlotHost("LR");
+        if (host) renderSlideshow(host, payload.media);
+      }
+      renderFullscreenSlideshow(payload.media);
+      updateDisplayRotation(payload.media);
+    } finally {
+      mediaLoopBusy = false;
+    }
+  }
+
 
   // Hermes Oracle: add 4 corner ornaments + ornamental side accents to
   // every .card when the active skin is "oracle". Pure DOM, no React.
@@ -1473,7 +1605,9 @@
     setInterval(tickClock, 30000);
     applyOracleOrnaments();
     loop();
+    mediaLoop();
     setInterval(loop, REFRESH_MS);
+    setInterval(mediaLoop, MEDIA_REFRESH_MS);
   }
 
   // Skin can change at runtime (e.g. via ?skin= override or set-skin).

@@ -2,7 +2,7 @@
 # Pedro Dashboard — slideshow rotator loop.
 #
 # Calls refresh-photos-slideshow.py every PEDRO_GOOGLE_PHOTOS_SLIDE_SECONDS
-# (default 5s) so the kiosk gets a fresh image_url on every poll cycle.
+# (default 2s) so the kiosk gets a fresh image_url on every poll cycle.
 # The Python script itself advances `pick_image` by one slot per call (it
 # remembers the previous index in media.json.slideshow.current), so calling
 # this loop at slide-second cadence gives "next image every N seconds" —
@@ -18,8 +18,8 @@
 #   scripts/photos-rotator.sh --start        # daemonise
 #   scripts/photos-rotator.sh --stop
 #   scripts/photos-rotator.sh --status
-#   scripts/photos-rotator.sh --loop --interval 5   # foreground loop
-#   PEDRO_PHOTOS_ROTATOR_INTERVAL=5 scripts/photos-rotator.sh --start
+#   scripts/photos-rotator.sh --loop --interval 2   # foreground loop
+#   PEDRO_PHOTOS_ROTATOR_INTERVAL=2 scripts/photos-rotator.sh --start
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -30,7 +30,7 @@ PROBE="$SCRIPT_DIR/refresh-photos-slideshow.py"
 PID_FILE="$PEDRO_RUN_DIR/photos-rotator.pid"
 LOG_FILE="$PEDRO_LOG_DIR/photos-rotator.log"
 
-INTERVAL="${PEDRO_PHOTOS_ROTATOR_INTERVAL:-${PEDRO_GOOGLE_PHOTOS_SLIDE_SECONDS:-5}}"
+INTERVAL="${PEDRO_PHOTOS_ROTATOR_INTERVAL:-${PEDRO_GOOGLE_PHOTOS_SLIDE_SECONDS:-2}}"
 ACTION="status"
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -48,6 +48,11 @@ while [[ $# -gt 0 ]]; do
 done
 
 pedro_ensure_dirs
+
+if ! awk -v interval="$INTERVAL" 'BEGIN { exit !(interval ~ /^[0-9]+([.][0-9]+)?$/ && interval > 0) }'; then
+  echo "invalid interval: $INTERVAL" >&2
+  exit 64
+fi
 
 # _lifecycle_common.sh does not export PY_BIN; it exposes PEDRO_SERVER_CMD
 # (default "python3") which is what refresh-all-state.sh also uses. We
@@ -68,6 +73,19 @@ is_ours() {
   fi
 }
 
+is_ours_interval() {
+  local pid="${1:-}"
+  local expected="${2:-}"
+  [[ "$(is_ours "$pid")" == "1" ]] || { echo 0; return 0; }
+  local cmd
+  cmd="$(pedro_pid_cmdline "$pid")"
+  if [[ "$cmd" =~ (^|[[:space:]])--interval[=[:space:]]${expected}([[:space:]]|$) ]]; then
+    echo 1
+  else
+    echo 0
+  fi
+}
+
 read_pid() {
   [[ -f "$PID_FILE" ]] || { echo ""; return 0; }
   tr -d '[:space:]' < "$PID_FILE" 2>/dev/null || true
@@ -77,8 +95,12 @@ case "$ACTION" in
   status)
     pid="$(read_pid)"
     if [[ "$(is_ours "$pid")" == "1" ]]; then
-      echo "photos rotator running: pid=$pid interval=${INTERVAL}s log=$LOG_FILE"
-      exit 0
+      if [[ "$(is_ours_interval "$pid" "$INTERVAL")" == "1" ]]; then
+        echo "photos rotator running: pid=$pid interval=${INTERVAL}s log=$LOG_FILE"
+        exit 0
+      fi
+      echo "photos rotator running with a different interval: pid=$pid expected=${INTERVAL}s" >&2
+      exit 2
     fi
     echo "photos rotator stopped"
     exit 1
@@ -107,8 +129,19 @@ case "$ACTION" in
   start)
     pid="$(read_pid)"
     if [[ "$(is_ours "$pid")" == "1" ]]; then
-      echo "photos rotator already running: pid=$pid interval=${INTERVAL}s"
-      exit 0
+      if [[ "$(is_ours_interval "$pid" "$INTERVAL")" == "1" ]]; then
+        echo "photos rotator already running: pid=$pid interval=${INTERVAL}s"
+        exit 0
+      fi
+      echo "photos rotator interval mismatch: replacing pid=$pid with interval=${INTERVAL}s"
+      kill "$pid" 2>/dev/null || true
+      for _ in 1 2 3 4 5; do
+        [[ "$(is_ours "$pid")" == "1" ]] || break
+        sleep 1
+      done
+      if [[ "$(is_ours "$pid")" == "1" ]]; then
+        kill -KILL "$pid" 2>/dev/null || true
+      fi
     fi
     rm -f "$PID_FILE"
     setsid "$0" --loop --interval "$INTERVAL" >> "$LOG_FILE" 2>&1 </dev/null &
