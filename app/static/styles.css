@@ -762,7 +762,7 @@ body > * { position: relative; z-index: 1; }
 }
 .euro-schedule__table-col--time { width: 72px; }
 .euro-schedule__table-col--gender { width: 38px; }
-.euro-schedule__table-col--status { width: 68px; }
+.euro-schedule__table-col--status { width: 132px; }
 .euro-schedule__table-head {
   padding: 0 6px 1px;
   color: var(--fg-mute);
@@ -800,6 +800,28 @@ body > * { position: relative; z-index: 1; }
 .euro-schedule__table-status {
   min-width: 0;
   text-align: right;
+}
+.euro-schedule__table-status-content {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  min-width: 0;
+}
+.euro-schedule__table-status-content > .euro-schedule__status {
+  min-width: 0;
+}
+.euro-schedule__prediction {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--red);
+  font-size: 9px;
+  font-weight: 900;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
 }
 .euro-schedule__table-row[data-gender="K"] .euro-schedule__gender {
   color: #ffb0c0;

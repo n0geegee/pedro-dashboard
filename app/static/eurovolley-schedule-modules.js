@@ -71,7 +71,13 @@
       sourceTime: text(raw.source_time, ""),
       sourceDate: text(raw.source_date, ""),
       sourceUrl: text(raw.source && raw.source.url, ""),
-      startAt: text(raw.start_at, "")
+      startAt: text(raw.start_at, ""),
+      prediction: raw.prediction && typeof raw.prediction === "object" ? {
+        winner: text(raw.prediction.winner, ""),
+        winnerCode: text(raw.prediction.winner_code, ""),
+        probability: Number(raw.prediction.probability),
+        model: text(raw.prediction.model, "")
+      } : null
     };
   }
 
@@ -222,6 +228,13 @@
     return STATUS_LABELS[row.status] || row.status.toUpperCase();
   }
 
+  function predictionLabel(row) {
+    var prediction = row && row.prediction;
+    var probability = Number(prediction && prediction.probability);
+    if (!prediction || !prediction.winner || !Number.isFinite(probability)) return "";
+    return prediction.winner + " " + Math.round(probability) + "%";
+  }
+
   function statusClass(row) {
     if (row.score || row.status === "finished") return "euro-schedule__status--finished";
     if (row.status === "live") return "euro-schedule__status--live";
@@ -281,7 +294,18 @@
     var gender = make(doc, "td", "euro-schedule__table-gender");
     gender.appendChild(make(doc, "span", "euro-schedule__gender", row.gender));
     item.appendChild(gender);
-    item.appendChild(make(doc, "td", "euro-schedule__table-status euro-schedule__status " + statusClass(row), statusLabel(row)));
+    var status = make(doc, "td", "euro-schedule__table-status");
+    var statusContent = make(doc, "div", "euro-schedule__table-status-content");
+    statusContent.appendChild(make(doc, "span", "euro-schedule__status " + statusClass(row), statusLabel(row)));
+    var prediction = predictionLabel(row);
+    if (prediction) {
+      var predictionNode = make(doc, "span", "euro-schedule__prediction", prediction);
+      predictionNode.setAttribute("title", "Prognozowany zwycięzca — heurystyka rankingu FIVB");
+      predictionNode.setAttribute("aria-label", "Prognozowany zwycięzca: " + prediction);
+      statusContent.appendChild(predictionNode);
+    }
+    status.appendChild(statusContent);
+    item.appendChild(status);
     parent.appendChild(item);
   }
 
@@ -295,7 +319,7 @@
     table.appendChild(colgroup);
     var thead = make(doc, "thead");
     var headRow = make(doc, "tr");
-    ["CZAS", "MECZ", "K/M", "STATUS"].forEach(function (label) {
+    ["CZAS", "MECZ", "K/M", "STATUS / PROGNOZA"].forEach(function (label) {
       headRow.appendChild(make(doc, "th", "euro-schedule__table-head", label));
     });
     thead.appendChild(headRow);

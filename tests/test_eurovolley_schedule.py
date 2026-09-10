@@ -12,6 +12,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from eurovolley_schedule import (  # noqa: E402
     build_data,
     parse_cev_final_page,
+    predict_match,
     static_poland_matches,
     static_schedule_matches,
 )
@@ -63,6 +64,21 @@ class EuroVolleyScheduleTests(unittest.TestCase):
             {row["warsaw_time"] for row in rows},
             {"15:00", "16:00", "18:00", "19:00", "21:05"},
         )
+
+    def test_prediction_is_percentage_for_scheduled_mens_match(self) -> None:
+        match = next(
+            row for row in static_schedule_matches(STAMP)
+            if row["source_date"] == "2026-09-10"
+            and row["home"]["code"] == "POL"
+            and row["away"]["code"] == "POR"
+        )
+        prediction = predict_match(match)
+        self.assertIsNotNone(prediction)
+        assert prediction is not None
+        self.assertEqual(prediction["winner_code"], "POL")
+        self.assertGreaterEqual(prediction["probability"], 80)
+        self.assertLessEqual(prediction["probability"], 99)
+        self.assertIsNone(predict_match({**match, "status": "finished"}))
 
     def test_official_card_parser_normalizes_score_and_phase(self) -> None:
         html = card(9, 0, "WFF-01", "POLAND", "SERBIA", "06/09", "16:00")

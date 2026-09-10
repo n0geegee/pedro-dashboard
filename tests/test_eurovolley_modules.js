@@ -27,7 +27,7 @@ const state = {
     timezone: "Europe/Warsaw",
     freshness: { refresh_status: "cached_after_probe_error" },
     poland_matches: [
-      { id: "m", gender: "M", competition_id: "eurovolley-2026-men", status: "scheduled", warsaw_date: "2026-09-10", warsaw_time: "15:00", start_at: "2026-09-10T13:00:00+00:00", home: { name: "Polska", code: "POL" }, away: { name: "Portugalia", code: "POR" }, phase: "Faza grupowa" },
+      { id: "m", gender: "M", competition_id: "eurovolley-2026-men", status: "scheduled", warsaw_date: "2026-09-10", warsaw_time: "15:00", start_at: "2026-09-10T13:00:00+00:00", home: { name: "Polska", code: "POL" }, away: { name: "Portugalia", code: "POR" }, phase: "Faza grupowa", prediction: { winner: "Polska", winner_code: "POL", probability: 91, model: "fivb-rank-v1" } },
       { id: "k", gender: "K", competition_id: "eurovolley-2026-women", status: "scheduled", warsaw_date: "2026-09-12", warsaw_time: "15:00", start_at: "2026-09-12T13:00:00+00:00", home: { name: "Polska", code: "POL" }, away: { name: "Serbia", code: "SRB" }, phase: "Mecz o 3. miejsce" },
       { id: "live", gender: "M", competition_id: "eurovolley-2026-men", status: "live", warsaw_date: "2026-09-06", warsaw_time: "13:00", start_at: "2026-09-06T11:00:00+00:00", home: { name: "Polska", code: "POL" }, away: { name: "Włochy", code: "ITA" }, phase: "Faza grupowa" },
       { id: "finished", gender: "K", competition_id: "eurovolley-2026-women", status: "finished", score: "3:1", warsaw_date: "2026-09-05", warsaw_time: "15:00", start_at: "2026-09-05T13:00:00+00:00", home: { name: "Polska", code: "POL" }, away: { name: "Czechy", code: "CZE" }, phase: "Faza grupowa" },
@@ -54,6 +54,8 @@ assert.strictEqual(poland.refreshStatus, "cached_after_probe_error");
 assert.deepStrictEqual(Array.from(poland.rows, row => row.id), ["live", "m", "k"]);
 assert.deepStrictEqual(Array.from(poland.rows, row => row.gender), ["M", "M", "K"]);
 assert.strictEqual(poland.rows[0].status, "live");
+assert.strictEqual(poland.rows.find(row => row.id === "m").prediction.winner, "Polska");
+assert.strictEqual(poland.rows.find(row => row.id === "m").prediction.probability, 91);
 assert.strictEqual(poland.rows[0].time, "13:00");
 assert.deepStrictEqual(Array.from(poland.rows, row => row.date), ["2026-09-06", "2026-09-10", "2026-09-12"]);
 assert.ok(Array.from(poland.rows).every(row => row.status === "live" || Date.parse(row.startAt) > fixedNow));

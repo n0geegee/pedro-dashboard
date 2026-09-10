@@ -115,6 +115,60 @@ TEAM_LABELS: Dict[str, str] = {
     "SUI": "Szwajcaria",
 }
 
+# LL prediction contract. This is intentionally a transparent, deterministic
+# ranking heuristic rather than a fabricated bookmaker quote: the UI shows the
+# most likely winner and the percentage derived from the current men's FIVB
+# ranking positions. Unknown teams receive no prediction until their ranking is
+# added, and finished/live rows never show a pre-match forecast.
+PREDICTION_MODEL: Dict[str, Any] = {
+    "id": "fivb-rank-v1",
+    "gender": "M",
+    "ranking_date": "2026-09-09",
+    "source_url": "https://learnvolley.com/fivb-ranking-men",
+    "description": "Heurystyka Elo z pozycji męskiego rankingu FIVB; nie są to kursy bukmacherskie.",
+}
+FIVB_RANKS_MEN: Dict[str, int] = {
+    "POL": 1, "ITA": 2, "SLO": 4, "FRA": 8, "BUL": 9, "TUR": 10,
+    "UKR": 11, "GER": 12, "FIN": 16, "BEL": 18, "CZE": 20,
+    "NED": 21, "GRE": 23, "POR": 26, "SUI": 28, "ISR": 29,
+    "EST": 30, "DEN": 31, "SWE": 33, "ROU": 38, "SVK": 44,
+    "LAT": 46, "MKD": 55,
+}
+RANKING_ELO_STEP = 15.0
+RANKING_ELO_SCALE = 400.0
+
+
+def predict_match(match: Mapping[str, Any]) -> Optional[Dict[str, Any]]:
+    """Return a pre-match winner forecast for a ranked men's fixture."""
+    if match.get("gender") != PREDICTION_MODEL["gender"] or match.get("status") != "scheduled":
+        return None
+    home = match.get("home") or {}
+    away = match.get("away") or {}
+    home_code = str(home.get("code") or "")
+    away_code = str(away.get("code") or "")
+    home_rank = FIVB_RANKS_MEN.get(home_code)
+    away_rank = FIVB_RANKS_MEN.get(away_code)
+    if home_rank is None or away_rank is None:
+        return None
+
+    home_rating = 1000.0 - (RANKING_ELO_STEP * home_rank)
+    away_rating = 1000.0 - (RANKING_ELO_STEP * away_rank)
+    home_probability = 1.0 / (1.0 + 10.0 ** ((away_rating - home_rating) / RANKING_ELO_SCALE))
+    home_percent = max(1, min(99, round(home_probability * 100)))
+    if home_percent >= 50:
+        winner = home
+        probability = home_percent
+    else:
+        winner = away
+        probability = 100 - home_percent
+    return {
+        "winner": str(winner.get("name") or winner.get("code") or "?"),
+        "winner_code": str(winner.get("code") or ""),
+        "probability": int(probability),
+        "model": PREDICTION_MODEL["id"],
+    }
+
+
 # Group stages are the only static rows retained in this module. These exact
 # local dates/times are transcribed from the official CEV calendar PDFs above.
 # The source-local timezone is converted to a real UTC instant below.
@@ -603,6 +657,10 @@ def build_data(dynamic_matches: Iterable[Mapping[str, Any]], retrieved_at: str, 
     # calendar, not only Poland's rows. Dynamic CEV cards still win when the
     # official page publishes a result/status update for a static fixture.
     all_matches = merge_matches(static_schedule_matches(retrieved_at), dynamic)
+    for match in all_matches:
+        prediction = predict_match(match)
+        if prediction is not None:
+            match["prediction"] = prediction
     poland = [
         m for m in all_matches
         if "POL" in {((m.get("home") or {}).get("code")), ((m.get("away") or {}).get("code"))}
@@ -635,6 +693,7 @@ def build_data(dynamic_matches: Iterable[Mapping[str, Any]], retrieved_at: str, 
         "days": _group_days(all_matches),
         "poland_matches": poland,
         "competitions": competitions,
+        "prediction_model": dict(PREDICTION_MODEL),
         "official_sources": [
             {"gender": gender, "name": SOURCES[gender]["name"], "url": SOURCES[gender]["official_url"], "calendar_url": SOURCES[gender]["calendar_url"]}
             for gender in ("K", "M")
