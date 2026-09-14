@@ -118,18 +118,74 @@ WEBP_QUALITY = 82
 WEBP_METHOD = 6  # slowest but ~6-10% smaller than method 4; one-shot at cache.
 
 
+def _is_normalized_webp(path: Path) -> bool:
+    """Return whether ``path`` is a kiosk-sized WebP derivative.
+
+    Older cache runs could leave a valid JPEG under the ``.webp`` filename
+    when WebP encoding failed. It rendered, but its native multi-megapixel
+    decode could take longer than the three-second rotation deadline.
+    """
+    if not path.exists():
+        return False
+    try:
+        with path.open("rb") as handle:
+            header = handle.read(12)
+        if header[:4] != b"RIFF" or header[8:12] != b"WEBP":
+            return False
+        if not _HAVE_PIL:
+            return True
+        with _PILImage.open(path) as img:
+            width, height = img.size
+        return width <= WEBP_MAX_W and height <= WEBP_MAX_H
+    except Exception:
+        return False
+
+
+def _normalize_existing_cache(dest: Path) -> None:
+    """Transcode a legacy raw cache file in place, preserving it on failure."""
+    if _is_normalized_webp(dest):
+        return
+    if not _HAVE_PIL:
+        raise RuntimeError("cached_image_not_normalized_without_pil")
+
+    legacy = dest.with_name(f"{dest.name}.legacy-{os.getpid()}")
+    dest.replace(legacy)
+    try:
+        encode_webp(legacy, dest)
+        if not _is_normalized_webp(dest):
+            raise RuntimeError("cache_normalization_failed")
+    except Exception:
+        # ``encode_webp`` may leave a raw fallback at dest. Remove it before
+        # restoring the original so a failed repair never destroys the cache.
+        try:
+            dest.unlink()
+        except FileNotFoundError:
+            pass
+        if legacy.exists():
+            legacy.replace(dest)
+        raise
+    finally:
+        try:
+            legacy.unlink()
+        except FileNotFoundError:
+            pass
+
+
 def download_if_needed(url: str, dest: Path) -> bool:
-    """Download the original JPEG (or whatever GPhotos serves) if no cached
-    derivative exists yet.
+    """Download or repair the cached WebP derivative for ``url``.
 
     The cached derivative written to ``dest`` is a WebP resized to
     ``WEBP_MAX_W`` × ``WEBP_MAX_H`` — see :func:`encode_webp`. ``dest``
     therefore ends in ``.webp``, not ``.jpg``; this function only fetches
-    the upstream bytes to a side-car temp file, then ``encode_webp``
-    shrinks and transcodes them into place.
+    the upstream bytes to a side-car temp file when no usable derivative
+    exists. Legacy JPEGs already present under the ``.webp`` name are
+    transcoded locally so they cannot stall the three-second kiosk cadence.
     """
     if dest.exists() and dest.stat().st_size > 10_000:
-        return False
+        if _is_normalized_webp(dest):
+            return False
+        _normalize_existing_cache(dest)
+        return True
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": "image/*"})
     raw_tmp = dest.with_suffix(dest.suffix + ".src")
     try:

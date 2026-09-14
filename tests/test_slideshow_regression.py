@@ -101,6 +101,32 @@ with media_state_lock(state_dir):
         self.assertIn("photoSeconds: 3", js)
         self.assertNotIn("transition: opacity", css)
 
+    def test_existing_raw_cache_is_reencoded_to_bounded_webp(self) -> None:
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location("refresh_photos_cache", SCRIPTS / "refresh-photos-slideshow.py")
+        self.assertIsNotNone(spec)
+        self.assertIsNotNone(spec.loader)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        if not module._HAVE_PIL:
+            self.skipTest("Pillow is required to repair a legacy cache entry")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "photo-legacy.webp"
+            image = module._PILImage.new("RGB", (2400, 1600), (32, 96, 160))
+            image.save(dest, "JPEG", quality=100)
+            self.assertFalse(module._is_normalized_webp(dest))
+
+            # A valid local legacy image must be repaired without touching the
+            # network; an invalid URL proves the path is entirely local.
+            self.assertTrue(module.download_if_needed("http://127.0.0.1:1/nope", dest))
+            self.assertTrue(module._is_normalized_webp(dest))
+            with module._PILImage.open(dest) as repaired:
+                self.assertEqual(repaired.format, "WEBP")
+                self.assertLessEqual(repaired.width, module.WEBP_MAX_W)
+                self.assertLessEqual(repaired.height, module.WEBP_MAX_H)
+
     def test_hot_rotation_does_not_block_on_manifest_refresh(self) -> None:
         rotator = (SCRIPTS / "photos-rotator.sh").read_text(encoding="utf-8")
         refresher = (SCRIPTS / "refresh-all-state.sh").read_text(encoding="utf-8")
