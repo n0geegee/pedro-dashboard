@@ -119,6 +119,35 @@ with media_state_lock(state_dir):
         self.assertEqual(current, 3)
         self.assertEqual(image["public_url"], "/static/cache/photos/c.webp")
 
+    def test_manifest_refresh_preserves_existing_queue_order(self) -> None:
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location("refresh_photos_order", SCRIPTS / "refresh-photos-slideshow.py")
+        self.assertIsNotNone(spec)
+        self.assertIsNotNone(spec.loader)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        previous = {
+            "images": [
+                {"public_url": "/static/cache/photos/b.webp"},
+                {"public_url": "/static/cache/photos/a.webp"},
+            ]
+        }
+        fresh = [
+            {"public_url": "/static/cache/photos/a.webp"},
+            {"public_url": "/static/cache/photos/c.webp"},
+            {"public_url": "/static/cache/photos/b.webp"},
+        ]
+        ordered = module.preserve_manifest_order(fresh, previous)
+        self.assertEqual(
+            [item["public_url"] for item in ordered],
+            [
+                "/static/cache/photos/b.webp",
+                "/static/cache/photos/a.webp",
+                "/static/cache/photos/c.webp",
+            ],
+        )
+
     def test_orientation_changes_only_incoming_layer_and_policy_is_shared(self) -> None:
         js = (STATIC / "app.js").read_text(encoding="utf-8")
         css = (STATIC / "styles.css").read_text(encoding="utf-8")
