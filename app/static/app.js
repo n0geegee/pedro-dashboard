@@ -1311,9 +1311,9 @@
     var rows = euroVolleyTickerRows(widgets);
     var items = [];
 
-    // Order: LIVE (if any) → the four most recent completed results for
-    // Poland in the current EuroVolley tournament. Upcoming fixtures belong
-    // in UL/LL, not in this compact strip.
+    // Order: LIVE (if any) → the three most recent completed matches for
+    // Poland across women and men. Upcoming fixtures belong in UL/LL, not
+    // in this compact strip.
 
     // 1. LIVE matches first. Trust the normalized CEV status instead of
     // deriving a live window from start_at; finished matches can have a
@@ -1334,7 +1334,7 @@
       return m.status !== "live" && (m.status === "finished" || tickerScore(m) != null);
     }).sort(function (a, b) {
       return tickerStartAt(b).localeCompare(tickerStartAt(a));
-    }).slice(0, 4).forEach(function (m) {
+    }).slice(0, 3).forEach(function (m) {
       var result = Object.assign({}, m, {
         _group: tickerGroup(m),
         score: tickerScore(m)

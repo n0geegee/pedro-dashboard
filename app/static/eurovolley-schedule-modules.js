@@ -176,26 +176,12 @@
     };
   }
 
-  function currentCompetitionIds(data) {
-    var explicit = text(data.current_competition_id, "");
-    if (explicit) return [explicit];
-    var selectedDate = text(data.selected_date, "");
-    var selectedDay = (Array.isArray(data.days) ? data.days : []).filter(function (day) {
-      return day && typeof day === "object" && text(day.date, "") === selectedDate;
-    })[0];
-    var ids = Object.create(null);
-    if (selectedDay && Array.isArray(selectedDay.matches)) {
-      selectedDay.matches.forEach(function (match) {
-        var id = text(match && match.competition_id, "");
-        if (id) ids[id] = true;
-      });
-    }
-    return Object.keys(ids);
-  }
-
   function normalizeTicker(widget) {
     var envelope = widget && typeof widget === "object" ? widget : {};
     var data = envelope.data && typeof envelope.data === "object" ? envelope.data : {};
+    // `poland_matches` is already the official Poland-only feed for the
+    // current EuroVolley edition. Keep both gender groups here: the ticker
+    // contract is "last three Poland matches", not "current competition".
     var sourceRows = Array.isArray(data.poland_matches)
       ? data.poland_matches
       : (Array.isArray(data.matches) ? data.matches.filter(function (row) {
@@ -203,12 +189,6 @@
           var awayCode = text(row && row.away && row.away.code, "");
           return homeCode === "POL" || awayCode === "POL";
         }) : []);
-    var allowedCompetitionIds = currentCompetitionIds(data);
-    sourceRows = allowedCompetitionIds.length
-      ? sourceRows.filter(function (row) {
-          return row && allowedCompetitionIds.indexOf(text(row.competition_id, "")) !== -1;
-        })
-      : [];
     return {
       status: text(envelope.status, "empty"),
       updatedAt: text(envelope.updated_at || data.freshness && data.freshness.retrieved_at, ""),

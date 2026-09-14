@@ -32,6 +32,7 @@ const state = {
       { id: "live", gender: "M", competition_id: "eurovolley-2026-men", status: "live", warsaw_date: "2026-09-06", warsaw_time: "13:00", start_at: "2026-09-06T11:00:00+00:00", home: { name: "Polska", code: "POL" }, away: { name: "Włochy", code: "ITA" }, phase: "Faza grupowa" },
       { id: "finished", gender: "K", competition_id: "eurovolley-2026-women", status: "finished", score: "3:1", warsaw_date: "2026-09-05", warsaw_time: "15:00", start_at: "2026-09-05T13:00:00+00:00", home: { name: "Polska", code: "POL" }, away: { name: "Czechy", code: "CZE" }, phase: "Faza grupowa" },
       { id: "finished-men", gender: "M", competition_id: "eurovolley-2026-men", status: "finished", score: "3:2", warsaw_date: "2026-09-04", warsaw_time: "15:00", start_at: "2026-09-04T13:00:00+00:00", home: { name: "Polska", code: "POL" }, away: { name: "Bułgaria", code: "BUL" }, phase: "Faza grupowa" },
+      { id: "finished-women-older", gender: "K", competition_id: "eurovolley-2026-women", status: "finished", score: "3:0", warsaw_date: "2026-09-03", warsaw_time: "15:00", start_at: "2026-09-03T13:00:00+00:00", home: { name: "Polska", code: "POL" }, away: { name: "Niderlandy", code: "NED" }, phase: "Faza grupowa" },
       { id: "malformed", gender: "K", competition_id: "eurovolley-2026-women", status: "scheduled", warsaw_date: "2026-09-20", warsaw_time: "15:00", start_at: "not-a-timestamp", home: { name: "Polska", code: "POL" }, away: { name: "Belgia", code: "BEL" }, phase: "Faza grupowa" }
     ],
     days: [
@@ -72,13 +73,19 @@ assert.ok(!Array.from(daily.days).some(day => Array.from(day.matches).some(row =
 
 const ticker = modules.normalizeTicker(state);
 assert.strictEqual(ticker.status, "stale");
-assert.strictEqual(ticker.rows.length, 3);
+assert.strictEqual(ticker.rows.length, 7);
 assert.ok(ticker.rows.some(row => row.id === "finished-men"));
+assert.ok(ticker.rows.some(row => row.id === "finished"));
 assert.ok(ticker.rows.some(row => row.id === "live"));
 assert.strictEqual(ticker.rows.find(row => row.id === "finished-men").score, "3:2");
-assert.ok(!ticker.rows.some(row => row.id === "finished"));
-assert.ok(!ticker.rows.some(row => row.gender === "K"));
-assert.ok(!Array.from(poland.rows).some(row => row.id === "finished"));
+assert.ok(ticker.rows.some(row => row.gender === "K"));
+const latestThreeFinished = Array.from(ticker.rows)
+  .filter(row => row.status === "finished")
+  .sort((a, b) => String(b.startAt).localeCompare(String(a.startAt)))
+  .slice(0, 3);
+assert.deepStrictEqual(Array.from(latestThreeFinished, row => row.id), ["finished", "finished-men", "finished-women-older"]);
+assert.deepStrictEqual(Array.from(latestThreeFinished, row => row.gender), ["K", "M", "K"]);
+assert.ok(!ticker.rows.some(row => row.id === "non-poland"));
 
 const fallbackState = {
   status: "ok",
@@ -99,7 +106,8 @@ assert.deepStrictEqual(
 const appSource = fs.readFileSync(require("path").join(__dirname, "../app/static/app.js"), "utf8");
 const tickerSource = appSource.slice(appSource.indexOf("function renderTicker"), appSource.indexOf("// ---- slot runtime adapters"));
 assert.ok(appSource.includes("modules.normalizeTicker"));
-assert.ok(tickerSource.includes("slice(0, 4)"));
+assert.ok(tickerSource.includes("slice(0, 3)"));
+assert.ok(!tickerSource.includes("slice(0, 4)"));
 assert.ok(tickerSource.includes("track.innerHTML = items.length"));
 assert.ok(appSource.includes("function tickerDate"));
 assert.ok(appSource.includes("m.date || m.warsaw_date"));
