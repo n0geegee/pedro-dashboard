@@ -7,7 +7,7 @@
 
   // REFRESH_MS is deliberately slower than the dedicated media poll below.
   // The full state endpoint fans out to many probes; photos are read through
-  // /api/media at MEDIA_REFRESH_MS so a 2s rotator never gets sampled too late.
+  // /api/media at MEDIA_REFRESH_MS so a 3s rotator never gets sampled too late.
   var REFRESH_MS = 3000;
   var MEDIA_REFRESH_MS = 500;
   var STATE_URL = "/api/state";
@@ -75,7 +75,7 @@
       enabled: false,
       dashboardMs: ROTATION_DEFAULT_DASHBOARD_MS,
       slideshowMs: ROTATION_DEFAULT_SLIDESHOW_MS,
-      photoSeconds: 2,
+      photoSeconds: 3,
       cycleStartedAtMs: null,
       generation: 0,
       valid: false
@@ -93,7 +93,7 @@
       enabled: true,
       dashboardMs: readDurationParam("dashboardSeconds", ROTATION_DEFAULT_DASHBOARD_MS),
       slideshowMs: readDurationParam("slideshowSeconds", ROTATION_DEFAULT_SLIDESHOW_MS),
-      photoSeconds: 2,
+      photoSeconds: 3,
       cycleStartedAtMs: Date.now(),
       generation: -1,
       valid: true
@@ -869,7 +869,7 @@
     }
 
     // Build the two-layer stage once. Replacing node.innerHTML on every media
-    // poll would reset data-ever-painted and make the crossfade impossible.
+    // poll would reset data-ever-painted and make the two-layer swap unreliable.
     if (!root || !root.querySelector(".slideshow__stage")) {
       node.innerHTML = '<div class="slideshow">'
         + '<div class="slideshow__stage" data-current-url="">'
@@ -1088,9 +1088,9 @@
   }
 
   // Push the next photo URL into the inactive layer, decode it, then flip
-  // the .is-active class so CSS crossfades. Decoding before the swap is the
-  // actual anti-black-gap fix — without it, Chrome would paint the new layer
-  // before the JPEG/WebP finished decoding, producing a visible flash.
+  // the .is-active class immediately. Decoding before the swap is the actual
+  // anti-black-gap fix — without it, Chrome could paint the new layer before
+  // the JPEG/WebP finished decoding, producing a visible flash.
   function applyFullscreenPhoto(stageEl, nextUrl, orientation) {
     if (!stageEl || !nextUrl) return;
     var photoClass = "fullscreen-slideshow__photo";
@@ -1109,8 +1109,7 @@
     var flip = function () {
       if (stageEl.getAttribute("data-photo-request") !== String(requestId)) return;
       // Force a single rAF so the browser registers the new background-image
-      // before we toggle opacity — otherwise the crossfade can be skipped on
-      // fast hardware.
+      // before the immediate layer swap on fast hardware.
       requestAnimationFrame(function () {
         if (stageEl.getAttribute("data-photo-request") !== String(requestId)) return;
         inactive.classList.add("is-active");
@@ -1134,7 +1133,7 @@
 
   // Kick off a background preload for the image the rotator will most likely
   // serve next (current+1, modulo total). This gives Chrome a head start so
-  // the actual crossfade in applyFullscreenPhoto is instant. We don't await
+  // the actual layer swap in applyFullscreenPhoto is instant. We don't await
   // — it's pure opportunistic warming of the HTTP/disk cache.
   function preloadNextImage(d) {
     if (!d || !d.total || !d.imageUrl) return;

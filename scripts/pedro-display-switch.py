@@ -66,8 +66,9 @@ def sync_rotator() -> int:
 
 def rotator_running() -> bool:
     try:
-        return _run_rotator("status", 2).returncode == 0
-    except OSError:
+        interval = int(read_control_state(DISPLAY_CONTROL_FILE).state["photo_seconds"])
+        return _run_rotator("status", interval).returncode == 0
+    except (OSError, KeyError, TypeError, ValueError):
         return False
 
 

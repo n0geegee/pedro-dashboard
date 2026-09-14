@@ -82,15 +82,33 @@ with media_state_lock(state_dir):
 
     def test_rotator_waits_after_probe_instead_of_zero_sleep_catch_up(self) -> None:
         source = (SCRIPTS / "photos-rotator.sh").read_text(encoding="utf-8")
-        self.assertIn('sleep "$INTERVAL"', source)
-        self.assertNotIn("remaining=$(awk", source)
+        self.assertIn('started_at="$(date +%s.%N)"', source)
+        self.assertIn('sleep_for="$(awk', source)
+        self.assertIn("remaining = interval - elapsed", source)
+        self.assertIn('sleep "$sleep_for"', source)
+        self.assertNotIn("sleep_for=0", source)
         self.assertNotIn('sleep "$remaining"', source)
+
+    def test_photo_cadence_is_three_seconds_without_fade(self) -> None:
+        control = (ROOT / "app" / "display_control.py").read_text(encoding="utf-8")
+        probe = (SCRIPTS / "refresh-photos-slideshow.py").read_text(encoding="utf-8")
+        rotator = (SCRIPTS / "photos-rotator.sh").read_text(encoding="utf-8")
+        js = (STATIC / "app.js").read_text(encoding="utf-8")
+        css = (STATIC / "styles.css").read_text(encoding="utf-8")
+        self.assertIn("DEFAULT_PHOTO_SECONDS = 3", control)
+        self.assertIn("DEFAULT_SLIDE_SECONDS = 3", probe)
+        self.assertIn("PEDRO_GOOGLE_PHOTOS_SLIDE_SECONDS:-3", rotator)
+        self.assertIn("photoSeconds: 3", js)
+        self.assertNotIn("transition: opacity", css)
 
     def test_hot_rotation_does_not_block_on_manifest_refresh(self) -> None:
         rotator = (SCRIPTS / "photos-rotator.sh").read_text(encoding="utf-8")
         refresher = (SCRIPTS / "refresh-all-state.sh").read_text(encoding="utf-8")
         probe = (SCRIPTS / "refresh-photos-slideshow.py").read_text(encoding="utf-8")
+        lifecycle = (SCRIPTS / "_lifecycle_common.sh").read_text(encoding="utf-8")
+        self.assertIn('PEDRO_GOOGLE_PHOTOS_SLIDE_SECONDS="${PEDRO_GOOGLE_PHOTOS_SLIDE_SECONDS:-3}"', lifecycle)
         self.assertIn("--no-manifest-refresh", rotator)
+        self.assertIn('PEDRO_GOOGLE_PHOTOS_SLIDE_SECONDS="$INTERVAL"', rotator)
         self.assertIn("--manifest-only", refresher)
         self.assertIn("manifest_only", probe)
         self.assertIn("no_manifest_refresh", probe)

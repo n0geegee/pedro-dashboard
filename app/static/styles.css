@@ -1277,8 +1277,7 @@ body > * { position: relative; z-index: 1; }
   position: absolute;
   inset: 0;
   opacity: 0;
-  transition: opacity 0.35s ease-in-out;
-  will-change: opacity;
+  /* Swap the two layers immediately; there is no opacity animation. */
 }
 .slideshow__layer.is-active {
   opacity: 1;
@@ -1417,15 +1416,13 @@ body[data-display-mode="slideshow"] {
   background-size: cover;
   transform: none;
 }
-/* Two layers stacked, crossfade via opacity transition. The active layer
-   paints the currently-visible photo; the inactive layer holds the upcoming
-   one and is warmed via preload + decode() before being flipped. */
+/* Two layers stacked; the active layer is swapped immediately after the
+   incoming image is warmed and decoded. */
 .fullscreen-slideshow__layer {
   position: absolute;
   inset: 0;
   opacity: 0;
-  transition: opacity 0.45s ease-in-out;
-  will-change: opacity;
+  /* No CSS transition: decoded incoming layer becomes visible immediately. */
   background-position: center center;
   background-repeat: no-repeat;
   background-size: cover;

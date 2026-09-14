@@ -2,7 +2,7 @@
 # Pedro Dashboard — slideshow rotator loop.
 #
 # Calls refresh-photos-slideshow.py every PEDRO_GOOGLE_PHOTOS_SLIDE_SECONDS
-# (default 2s) so the kiosk gets a fresh image_url on every poll cycle.
+# (default 3s) so the kiosk gets a fresh image_url on every poll cycle.
 # The Python script itself advances `pick_image` by one slot per call (it
 # remembers the previous index in media.json.slideshow.current), so calling
 # this loop at slide-second cadence gives "next image every N seconds" —
@@ -18,8 +18,8 @@
 #   scripts/photos-rotator.sh --start        # daemonise
 #   scripts/photos-rotator.sh --stop
 #   scripts/photos-rotator.sh --status
-#   scripts/photos-rotator.sh --loop --interval 2   # foreground loop
-#   PEDRO_PHOTOS_ROTATOR_INTERVAL=2 scripts/photos-rotator.sh --start
+#   scripts/photos-rotator.sh --loop --interval 3   # foreground loop
+#   PEDRO_PHOTOS_ROTATOR_INTERVAL=3 scripts/photos-rotator.sh --start
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -42,7 +42,7 @@ if ! ( : > "$START_LOCK_FILE" ) 2>/dev/null; then
   START_LOCK_FILE="$PEDRO_RUN_DIR/photos-rotator-start.lock"
 fi
 
-INTERVAL="${PEDRO_PHOTOS_ROTATOR_INTERVAL:-${PEDRO_GOOGLE_PHOTOS_SLIDE_SECONDS:-2}}"
+INTERVAL="${PEDRO_PHOTOS_ROTATOR_INTERVAL:-${PEDRO_GOOGLE_PHOTOS_SLIDE_SECONDS:-3}}"
 ACTION="status"
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -188,7 +188,8 @@ case "$ACTION" in
     pedro_log_ts() { date +%Y-%m-%dT%H:%M:%S.%3N%z; }
     printf '[%s] photos rotator loop started pid=%s interval=%ss\n' "$(pedro_log_ts)" "$$" "$INTERVAL" >> "$LOG_FILE"
     while true; do
-      if "$PY_BIN" "$PROBE" --no-manifest-refresh 2>&1 | while IFS= read -r line; do
+      started_at="$(date +%s.%N)"
+      if PEDRO_GOOGLE_PHOTOS_SLIDE_SECONDS="$INTERVAL" "$PY_BIN" "$PROBE" --no-manifest-refresh 2>&1 | while IFS= read -r line; do
              printf '[%s] %s\n' "$(pedro_log_ts)" "$line"
            done >> "$LOG_FILE"; then
         :
@@ -196,11 +197,12 @@ case "$ACTION" in
         rc=$?
         printf '[%s] photos rotator: probe failed rc=%s\n' "$(pedro_log_ts)" "$rc" >> "$LOG_FILE"
       fi
-      # Always give the committed frame a full configured dwell after the
-      # probe completes. A manifest refresh can be slow; never compensate
-      # with zero sleep, which would flash the next frame immediately after
-      # the slow probe and make dwell times visibly uneven.
-      sleep "$INTERVAL"
+      finished_at="$(date +%s.%N)"
+      # Compensate only when the probe finished within the configured dwell.
+      # After an overrun, wait a full interval instead of sleeping zero.
+      sleep_for="$(awk -v interval="$INTERVAL" -v started="$started_at" -v finished="$finished_at" \
+        'BEGIN { elapsed = finished - started; remaining = interval - elapsed; if (remaining > 0 && remaining < interval) print remaining; else print interval }')"
+      sleep "$sleep_for"
     done
     ;;
   *)

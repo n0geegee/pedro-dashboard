@@ -35,7 +35,7 @@ class DisplayControlTests(unittest.TestCase):
         self.assertFalse(result.valid)
         self.assertEqual(result.error, "missing")
         self.assertFalse(result.state["enabled"])
-        self.assertEqual(result.state["photo_seconds"], 2)
+        self.assertEqual(result.state["photo_seconds"], 3)
 
     def test_on_off_and_restart_are_idempotent(self) -> None:
         state, changed, _ = apply_action("on", self.path, now=self.now)
@@ -147,7 +147,7 @@ class DisplayControlTests(unittest.TestCase):
         final = json.loads(self.path.read_text(encoding="utf-8"))
         self.assertFalse(final["enabled"])
         calls_text = calls.read_text(encoding="utf-8")
-        self.assertIn("--start --interval 2", calls_text)
+        self.assertIn("--start --interval 3", calls_text)
         self.assertIn("--stop", calls_text)
 
 

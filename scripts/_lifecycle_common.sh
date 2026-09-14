@@ -90,10 +90,10 @@ export PEDRO_GOOGLE_PHOTOS_REFRESH_SECONDS
 # Raise to 300 for headroom; user can keep adding without re-tuning.
 PEDRO_GOOGLE_PHOTOS_MAX_IMAGES="${PEDRO_GOOGLE_PHOTOS_MAX_IMAGES:-300}"
 export PEDRO_GOOGLE_PHOTOS_MAX_IMAGES
-# User wants 2 s/photo so the full album cycles quickly while the
+# User wants 3 s/photo so the full album cycles quickly while the
 # state-refresher remains at its slower dashboard cadence. Default in the
-# standalone probe remains a conservative fallback for manual use.
-PEDRO_GOOGLE_PHOTOS_SLIDE_SECONDS="${PEDRO_GOOGLE_PHOTOS_SLIDE_SECONDS:-2}"
+# standalone probe remains the same fallback for manual use.
+PEDRO_GOOGLE_PHOTOS_SLIDE_SECONDS="${PEDRO_GOOGLE_PHOTOS_SLIDE_SECONDS:-3}"
 export PEDRO_GOOGLE_PHOTOS_SLIDE_SECONDS
 
 # --- helpers --------------------------------------------------------------
