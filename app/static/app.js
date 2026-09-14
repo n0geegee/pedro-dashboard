@@ -896,6 +896,7 @@
       if (wasActive) layers[i].classList.add("is-active");
     }
     var prevUrl = stageEl.getAttribute("data-current-url") || "";
+    var pendingUrl = stageEl.getAttribute("data-pending-url") || "";
     var everPainted = stageEl.getAttribute("data-ever-painted") === "1";
     if (!everPainted) {
       setSlideshowLayerBackground(layers[0], imageUrl);
@@ -903,7 +904,7 @@
       layers[1].classList.remove("is-active");
       stageEl.setAttribute("data-current-url", imageUrl);
       stageEl.setAttribute("data-ever-painted", "1");
-    } else if (prevUrl !== imageUrl) {
+    } else if (prevUrl !== imageUrl && pendingUrl !== imageUrl) {
       applySlideshowPhoto(stageEl, imageUrl, d.orientation);
     }
   }
@@ -929,6 +930,7 @@
     if (!active || !inactive) return;
     var requestId = (parseInt(stageEl.getAttribute("data-photo-request") || "0", 10) || 0) + 1;
     stageEl.setAttribute("data-photo-request", String(requestId));
+    stageEl.setAttribute("data-pending-url", nextUrl);
     inactive.className = "slideshow__layer " + photoClass;
     setSlideshowLayerBackground(inactive, nextUrl);
     var nextImg = new Image();
@@ -941,6 +943,9 @@
         active.classList.remove("is-active");
       });
       stageEl.setAttribute("data-current-url", nextUrl);
+      if (stageEl.getAttribute("data-pending-url") === nextUrl) {
+        stageEl.removeAttribute("data-pending-url");
+      }
     };
     nextImg.onload = function () {
       if (typeof nextImg.decode === "function") {
@@ -1061,6 +1066,7 @@
       if (wasActive) layers[i].classList.add("is-active");
     }
     var prevUrl = stageEl.getAttribute("data-current-url") || "";
+    var pendingUrl = stageEl.getAttribute("data-pending-url") || "";
     var everPainted = stageEl.getAttribute("data-ever-painted") === "1";
     if (!everPainted) {
       setLayerBackground(layers[0], imageUrl);
@@ -1068,7 +1074,7 @@
       layers[1].classList.remove("is-active");
       stageEl.setAttribute("data-current-url", imageUrl);
       stageEl.setAttribute("data-ever-painted", "1");
-    } else if (prevUrl !== imageUrl) {
+    } else if (prevUrl !== imageUrl && pendingUrl !== imageUrl) {
       applyFullscreenPhoto(stageEl, imageUrl, d.orientation);
     }
   }
@@ -1105,6 +1111,7 @@
     if (!inactive || !active) return;
     var requestId = (parseInt(stageEl.getAttribute("data-photo-request") || "0", 10) || 0) + 1;
     stageEl.setAttribute("data-photo-request", String(requestId));
+    stageEl.setAttribute("data-pending-url", nextUrl);
     inactive.className = "fullscreen-slideshow__layer " + photoClass;
     setLayerBackground(inactive, nextUrl);
     var nextImg = new Image();
@@ -1120,6 +1127,9 @@
         active.classList.remove("is-active");
       });
       stageEl.setAttribute("data-current-url", nextUrl);
+      if (stageEl.getAttribute("data-pending-url") === nextUrl) {
+        stageEl.removeAttribute("data-pending-url");
+      }
     };
     nextImg.onload = function () {
       if (typeof nextImg.decode === "function") {
@@ -1482,7 +1492,8 @@
     if (!state || !state.widgets) return;
     var w = state.widgets;
     setRotationControl(state.display_control);
-    activeMediaWidget = w.media || activeMediaWidget;
+    var mediaWidget = activeMediaWidget || w.media || null;
+    if (!activeMediaWidget && w.media) activeMediaWidget = w.media;
     document.body.setAttribute("data-display-control", rotationControl.enabled ? "on" : "off");
     // URL/localStorage override wins over the state-driven skin so a
     // user (or a tester) can preview a skin without changing server state.
@@ -1506,13 +1517,20 @@
       if (node) renderCard(p[0], node, w[p[0]]);
     });
 
-    if (slotRuntime) slotRuntime.update(state);
-    else renderLegacySlotState(state);
+    var renderState = state;
+    if (mediaWidget && w.media !== mediaWidget) {
+      renderState = Object.assign({}, state, {
+        widgets: Object.assign({}, w, { media: mediaWidget })
+      });
+    }
+    if (slotRuntime) slotRuntime.update(renderState);
+    else renderLegacySlotState(renderState);
 
     // Fullscreen slideshow and rotation policy stay shell-owned. The LR
-    // module only owns the ordinary slideshow card body.
-    renderFullscreenSlideshow(w.media);
-    updateDisplayRotation(w.media);
+    // module only owns the ordinary slideshow card body, and both use the
+    // same freshest media snapshot so /api/state cannot rewind /api/media.
+    renderFullscreenSlideshow(mediaWidget);
+    updateDisplayRotation(mediaWidget);
     renderTicker(w);
   }
 

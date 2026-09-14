@@ -66,7 +66,8 @@ PHOTOS_PID_FILE="$PEDRO_RUN_DIR/photos-rotator.pid"
 photos_owned=0
 if [[ -f "$PHOTOS_PID_FILE" ]]; then
   photos_pid="$(tr -d '[:space:]' < "$PHOTOS_PID_FILE" 2>/dev/null || true)"
-  if [[ "$photos_pid" =~ ^[0-9]+$ ]] && kill -0 "$photos_pid" 2>/dev/null; then
+  if [[ "$photos_pid" =~ ^[0-9]+$ ]] && \
+      [[ "$(pedro_pid_matches_all "$photos_pid" "photos-rotator.sh" "--loop")" == "1" ]]; then
     photos_owned=1
   fi
 fi

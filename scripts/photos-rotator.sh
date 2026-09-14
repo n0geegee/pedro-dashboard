@@ -29,6 +29,18 @@ source "$SCRIPT_DIR/_lifecycle_common.sh"
 PROBE="$SCRIPT_DIR/refresh-photos-slideshow.py"
 PID_FILE="$PEDRO_RUN_DIR/photos-rotator.pid"
 LOG_FILE="$PEDRO_LOG_DIR/photos-rotator.log"
+ROTATOR_LOCK_FILE="${PEDRO_PHOTOS_ROTATOR_LOCK_FILE:-/var/lock/pedro-photos-rotator.lock}"
+START_LOCK_FILE="${PEDRO_PHOTOS_ROTATOR_START_LOCK_FILE:-/var/lock/pedro-photos-rotator-start.lock}"
+
+# /var/lock is normally writable by the kiosk user. Fall back to the private
+# run directory on hosts where it is not, while keeping all invocations on the
+# same lock paths.
+if ! ( : > "$ROTATOR_LOCK_FILE" ) 2>/dev/null; then
+  ROTATOR_LOCK_FILE="$PEDRO_RUN_DIR/photos-rotator.lock"
+fi
+if ! ( : > "$START_LOCK_FILE" ) 2>/dev/null; then
+  START_LOCK_FILE="$PEDRO_RUN_DIR/photos-rotator-start.lock"
+fi
 
 INTERVAL="${PEDRO_PHOTOS_ROTATOR_INTERVAL:-${PEDRO_GOOGLE_PHOTOS_SLIDE_SECONDS:-2}}"
 ACTION="status"
@@ -106,6 +118,8 @@ case "$ACTION" in
     exit 1
     ;;
   stop)
+    exec 8>"$START_LOCK_FILE"
+    flock -w 10 8 || { echo "photos rotator: could not acquire start lock" >&2; exit 75; }
     pid="$(read_pid)"
     if [[ -z "$pid" ]] || [[ "$(is_ours "$pid")" == "0" ]]; then
       rm -f "$PID_FILE"
@@ -127,6 +141,8 @@ case "$ACTION" in
     exit 1
     ;;
   start)
+    exec 8>"$START_LOCK_FILE"
+    flock -w 10 8 || { echo "photos rotator: could not acquire start lock" >&2; exit 75; }
     pid="$(read_pid)"
     if [[ "$(is_ours "$pid")" == "1" ]]; then
       if [[ "$(is_ours_interval "$pid" "$INTERVAL")" == "1" ]]; then
@@ -144,7 +160,9 @@ case "$ACTION" in
       fi
     fi
     rm -f "$PID_FILE"
-    setsid "$0" --loop --interval "$INTERVAL" >> "$LOG_FILE" 2>&1 </dev/null &
+    # Do not let the child inherit fd 8, otherwise it would hold the
+    # start lock for the entire lifetime of the rotator.
+    setsid "$0" --loop --interval "$INTERVAL" >> "$LOG_FILE" 2>&1 </dev/null 8>&- &
     newpid=$!
     for _ in 1 2 3 4 5 6 7 8 9 10; do
       [[ "$(is_ours "$newpid")" == "1" ]] && break
@@ -160,6 +178,11 @@ case "$ACTION" in
     ;;
   loop)
     # foreground loop. Detach via setsid in the --start case above.
+    exec 9>"$ROTATOR_LOCK_FILE"
+    if ! flock -n 9; then
+      printf '[%s] photos rotator loop skipped: another owner is active\n' "$(date +%Y-%m-%dT%H:%M:%S.%3N%z)" >&2
+      exit 0
+    fi
     echo "$BASHPID" > "$PID_FILE"
     trap 'rm -f "$PID_FILE"; exit 0' INT TERM EXIT
     pedro_log_ts() { date +%Y-%m-%dT%H:%M:%S.%3N%z; }

@@ -128,9 +128,8 @@ fi
 : > "$PEDRO_KIOSK_LOG_ERR_FILE"
 
 # Use --no-first-run and a dedicated profile to avoid polluting the user's
-# default Chrome state. --kiosk opens full-screen; we do NOT add
-# --noerrdialogs / --disable-session-crashed-bubble in this MVP — the
-# operator can layer them later if a kiosk session is real.
+# default Chrome state. --noerrdialogs and the update/crash-bubble guards keep
+# native Chrome notifications from protruding over the passive kiosk surface.
 #
 # setsid(2) detaches Chrome from this script's session: the immediate child
 # of this shell is the setsid/glibc helper, not the long-lived Chrome
@@ -144,6 +143,9 @@ setsid "$CHROME_BIN" \
   --no-first-run \
   --password-store=basic \
   --no-default-browser-check \
+  --noerrdialogs \
+  --disable-session-crashed-bubble \
+  --disable-component-update \
   --disable-background-timer-throttling \
   --disable-renderer-backgrounding \
   --disable-backgrounding-occluded-windows \

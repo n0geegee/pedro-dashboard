@@ -9,6 +9,7 @@ hands-off display album that Jurand can keep adding photos to.
 """
 from __future__ import annotations
 
+import fcntl
 import hashlib
 import json
 import os
@@ -319,7 +320,7 @@ def pick_image(manifest: dict[str, Any], slide_seconds: int, last_index: int | N
     return idx + 1, images[idx]
 
 
-def main() -> int:
+def _main_locked() -> int:
     state_dir = resolve_state_dir(None)
     root = project_root()
     out_path = state_path(state_dir)
@@ -381,6 +382,24 @@ def main() -> int:
             f.write(f"[{now_iso()}] PHOTOS_SLIDESHOW_FAILED: {type(exc).__name__}: {exc}\n")
         print(f"wrote {out_path} (photos unavailable); see app/logs/refresh-photos-slideshow.err.log")
         return 0
+
+
+def main() -> int:
+    state_dir = resolve_state_dir(None)
+    lock_path = Path(os.environ.get("PEDRO_PHOTOS_LOCK_FILE", "/var/lock/pedro-photos.lock"))
+    try:
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        lock = lock_path.open("a+", encoding="utf-8")
+    except OSError:
+        lock_path = state_dir / "photos.lock"
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        lock = lock_path.open("a+", encoding="utf-8")
+    with lock:
+        try:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+            return _main_locked()
+        finally:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
 
 
 if __name__ == "__main__":
