@@ -1338,16 +1338,16 @@ body > * { position: relative; z-index: 1; }
   background-repeat: no-repeat;
   display: block;
 }
-/* Portrait/square photos: slight overscan makes better use of the LR
-   frame on the room screen while keeping cropping conservative. */
+/* Keep orientation framing identical in the embedded card and full viewport:
+   landscape covers; portrait/square use a black letterbox with no overscan. */
 .slideshow__photo--portrait {
-  background-size: auto 106%;
+  background-size: contain;
   background-position: center center;
   background-repeat: no-repeat;
   background-color: #000;
 }
 .slideshow__photo--square {
-  background-size: auto 104%;
+  background-size: contain;
   background-position: center center;
   background-repeat: no-repeat;
   background-color: #000;
@@ -1415,7 +1415,7 @@ body[data-display-mode="slideshow"] {
   background-position: center center;
   background-repeat: no-repeat;
   background-size: cover;
-  transform: scale(1.002);
+  transform: none;
 }
 /* Two layers stacked, crossfade via opacity transition. The active layer
    paints the currently-visible photo; the inactive layer holds the upcoming
@@ -1429,7 +1429,7 @@ body[data-display-mode="slideshow"] {
   background-position: center center;
   background-repeat: no-repeat;
   background-size: cover;
-  transform: scale(1.002);
+  transform: none;
 }
 .fullscreen-slideshow__layer.is-active {
   opacity: 1;

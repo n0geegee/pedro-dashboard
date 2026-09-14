@@ -9,7 +9,7 @@ hands-off display album that Jurand can keep adding photos to.
 """
 from __future__ import annotations
 
-import fcntl
+import argparse
 import hashlib
 import json
 import os
@@ -23,7 +23,14 @@ from typing import Any
 
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _probe_common import atomic_write, envelope, now_iso, resolve_state_dir  # noqa: E402
+from _probe_common import (
+    atomic_write,
+    envelope,
+    manifest_state_lock,
+    media_state_lock,
+    now_iso,
+    resolve_state_dir,
+)  # noqa: E402
 
 try:
     from PIL import Image as _PILImage
@@ -284,22 +291,41 @@ def cache_album(album_url: str, cache_dir: Path, manifest_path: Path, max_images
     return manifest
 
 
-def load_or_refresh_manifest(album_url: str, cache_dir: Path, manifest_path: Path, refresh_seconds: int, max_images: int) -> dict[str, Any]:
+def load_or_refresh_manifest(
+    album_url: str,
+    cache_dir: Path,
+    manifest_path: Path,
+    refresh_seconds: int,
+    max_images: int,
+    *,
+    allow_refresh: bool = True,
+) -> dict[str, Any]:
     existing = read_json(manifest_path)
     if existing and existing.get("images"):
+        if not allow_refresh:
+            return existing
         age = time.time() - manifest_path.stat().st_mtime
         if age < refresh_seconds:
             return existing
+    if not allow_refresh:
+        raise RuntimeError("manifest_missing_for_hot_rotation")
     return cache_album(album_url, cache_dir, manifest_path, max_images=max_images)
 
 
-def pick_image(manifest: dict[str, Any], slide_seconds: int, last_index: int | None = None) -> tuple[int, dict[str, Any]]:
+def pick_image(
+    manifest: dict[str, Any],
+    slide_seconds: int,
+    last_index: int | None = None,
+    last_public_url: str | None = None,
+) -> tuple[int, dict[str, Any]]:
     """Pick the next image for the slideshow.
 
     Two modes:
       * `last_index is None` (first run / no baseline in media.json) — fall
         back to a deterministic time-based index so the kiosk is not blank.
-      * `last_index` is provided (subsequent runs) — return
+      * `last_public_url` is present (including after a manifest shuffle) —
+        find the current image in the new queue and return the following slot.
+      * otherwise, when `last_index` is provided, return
         `(last_index + 1) % len(images)`. This is the "always next, no skips"
         behaviour: every call advances by exactly one position, so the
         dashboard server can be called at any cadence (5s, 20s, 60s) and the
@@ -311,6 +337,11 @@ def pick_image(manifest: dict[str, Any], slide_seconds: int, last_index: int | N
     images = [x for x in manifest.get("images", []) if isinstance(x, dict) and x.get("public_url")]
     if not images:
         raise RuntimeError("manifest_has_no_images")
+    if last_public_url:
+        for current_idx, item in enumerate(images):
+            if item.get("public_url") == last_public_url:
+                idx = (current_idx + 1) % len(images)
+                return idx + 1, images[idx]
     if last_index is None or last_index < 0 or last_index >= len(images):
         # Cold start / out-of-range fallback. Deterministic on the bucket so
         # two probes within the same slide_seconds window agree.
@@ -320,7 +351,35 @@ def pick_image(manifest: dict[str, Any], slide_seconds: int, last_index: int | N
     return idx + 1, images[idx]
 
 
-def _main_locked() -> int:
+def _refresh_manifest_only() -> int:
+    """Refresh only the album manifest; never touch media.json."""
+    state_dir = resolve_state_dir(None)
+    root = project_root()
+    album_url = os.environ.get("PEDRO_GOOGLE_PHOTOS_ALBUM_URL", DEFAULT_ALBUM_URL).strip()
+    refresh_seconds = int(os.environ.get("PEDRO_GOOGLE_PHOTOS_REFRESH_SECONDS", DEFAULT_REFRESH_SECONDS))
+    max_images = int(os.environ.get("PEDRO_GOOGLE_PHOTOS_MAX_IMAGES", DEFAULT_MAX_IMAGES))
+    cache_dir = root / "app" / "static" / "cache" / "photos"
+    manifest_path = root / "app" / "state" / "photos_manifest.json"
+    try:
+        with manifest_state_lock(state_dir):
+            existing = read_json(manifest_path)
+            if existing and existing.get("images"):
+                age = time.time() - manifest_path.stat().st_mtime
+                if age < refresh_seconds:
+                    print(f"photos manifest fresh (age={int(age)}s)")
+                    return 0
+            manifest = cache_album(album_url, cache_dir, manifest_path, max_images=max_images)
+        print(f"photos manifest refreshed (count={manifest.get('count', 0)})")
+    except Exception as exc:
+        log_dir = root / "app" / "logs"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        with (log_dir / "refresh-photos-slideshow.err.log").open("a", encoding="utf-8") as handle:
+            handle.write(f"[{now_iso()}] PHOTOS_MANIFEST_REFRESH_FAILED: {type(exc).__name__}: {exc}\n")
+        print(f"photos manifest refresh skipped ({type(exc).__name__})")
+    return 0
+
+
+def _main_locked(*, allow_manifest_refresh: bool = True) -> int:
     state_dir = resolve_state_dir(None)
     root = project_root()
     out_path = state_path(state_dir)
@@ -335,13 +394,36 @@ def _main_locked() -> int:
     media = load_media_baseline(out_path)
     data = media.setdefault("data", {})
     try:
-        manifest = load_or_refresh_manifest(album_url, cache_dir, manifest_path, refresh_seconds, max_images=max_images)
+        if allow_manifest_refresh:
+            with manifest_state_lock(state_dir):
+                manifest = load_or_refresh_manifest(
+                    album_url,
+                    cache_dir,
+                    manifest_path,
+                    refresh_seconds,
+                    max_images=max_images,
+                )
+        else:
+            manifest = load_or_refresh_manifest(
+                album_url,
+                cache_dir,
+                manifest_path,
+                refresh_seconds,
+                max_images=max_images,
+                allow_refresh=False,
+            )
         # Read previous current from media.json so pick_image can advance by
         # exactly one slot instead of jumping to a wall-clock-derived index.
         # `current` is 1-based in the JSON; convert to 0-based for the math.
         prev_current = ((data.get("slideshow") or {}).get("current") or 0)
+        prev_image_url = ((data.get("slideshow") or {}).get("image_url") or None)
         last_index = (prev_current - 1) if prev_current > 0 else None
-        current, image = pick_image(manifest, slide_seconds=slide_seconds, last_index=last_index)
+        current, image = pick_image(
+            manifest,
+            slide_seconds=slide_seconds,
+            last_index=last_index,
+            last_public_url=prev_image_url,
+        )
         total = int(manifest.get("count") or len(manifest.get("images") or []))
         data["slideshow"] = {
             "album": album_title,
@@ -385,21 +467,25 @@ def _main_locked() -> int:
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--manifest-only",
+        action="store_true",
+        help="refresh photos_manifest.json without modifying media.json",
+    )
+    parser.add_argument(
+        "--no-manifest-refresh",
+        action="store_true",
+        help="rotate from the cached manifest without network refreshes",
+    )
+    args = parser.parse_args()
+    if args.manifest_only and args.no_manifest_refresh:
+        parser.error("--manifest-only and --no-manifest-refresh are mutually exclusive")
+    if args.manifest_only:
+        return _refresh_manifest_only()
     state_dir = resolve_state_dir(None)
-    lock_path = Path(os.environ.get("PEDRO_PHOTOS_LOCK_FILE", "/var/lock/pedro-photos.lock"))
-    try:
-        lock_path.parent.mkdir(parents=True, exist_ok=True)
-        lock = lock_path.open("a+", encoding="utf-8")
-    except OSError:
-        lock_path = state_dir / "photos.lock"
-        lock_path.parent.mkdir(parents=True, exist_ok=True)
-        lock = lock_path.open("a+", encoding="utf-8")
-    with lock:
-        try:
-            fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
-            return _main_locked()
-        finally:
-            fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+    with media_state_lock(state_dir):
+        return _main_locked(allow_manifest_refresh=not args.no_manifest_refresh)
 
 
 if __name__ == "__main__":

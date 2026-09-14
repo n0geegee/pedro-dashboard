@@ -15,8 +15,10 @@ Privacy contract:
 from __future__ import annotations
 
 import json
+import fcntl
 import os
 import sys
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -24,6 +26,8 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 APP_DIR = PROJECT_ROOT / "app"
 DEFAULT_STATE_DIR = APP_DIR / "state"
 PRIVACY_MODE = os.environ.get("DASHBOARD_PRIVACY_MODE", "private")
+DEFAULT_MEDIA_LOCK_FILE = "/var/lock/pedro-photos.lock"
+DEFAULT_MANIFEST_LOCK_FILE = "/var/lock/pedro-photos-manifest.lock"
 
 
 def now_iso() -> str:
@@ -50,6 +54,49 @@ def atomic_write(path: Path, payload: dict) -> None:
             # did flush(), so the bytes are at least in the OS buffers.
             pass
     os.replace(tmp, path)
+
+
+@contextmanager
+def media_state_lock(state_dir: Path):
+    """Serialize every read/modify/write transaction on media.json.
+
+    Photos and Polsat both update different subtrees of the same JSON file.
+    Atomic replacement prevents torn JSON, but only this shared lock prevents
+    a stale read by one writer from restoring another writer's cursor.
+    """
+    lock_path = Path(os.environ.get("PEDRO_PHOTOS_LOCK_FILE", DEFAULT_MEDIA_LOCK_FILE))
+    try:
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        lock = lock_path.open("a+", encoding="utf-8")
+    except OSError:
+        lock_path = state_dir / "photos.lock"
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        lock = lock_path.open("a+", encoding="utf-8")
+    with lock:
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+
+
+@contextmanager
+def manifest_state_lock(state_dir: Path):
+    """Serialize album refreshes without blocking hot media rotation reads."""
+    lock_path = Path(os.environ.get("PEDRO_PHOTOS_MANIFEST_LOCK_FILE", DEFAULT_MANIFEST_LOCK_FILE))
+    try:
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        lock = lock_path.open("a+", encoding="utf-8")
+    except OSError:
+        lock_path = state_dir / "photos-manifest.lock"
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        lock = lock_path.open("a+", encoding="utf-8")
+    with lock:
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
 
 
 def envelope(widget: str, status: str, ttl: int, data: dict, error: dict | None = None) -> dict:

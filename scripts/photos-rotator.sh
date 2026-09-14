@@ -188,8 +188,7 @@ case "$ACTION" in
     pedro_log_ts() { date +%Y-%m-%dT%H:%M:%S.%3N%z; }
     printf '[%s] photos rotator loop started pid=%s interval=%ss\n' "$(pedro_log_ts)" "$$" "$INTERVAL" >> "$LOG_FILE"
     while true; do
-      started="$(date +%s.%N)"
-      if "$PY_BIN" "$PROBE" 2>&1 | while IFS= read -r line; do
+      if "$PY_BIN" "$PROBE" --no-manifest-refresh 2>&1 | while IFS= read -r line; do
              printf '[%s] %s\n' "$(pedro_log_ts)" "$line"
            done >> "$LOG_FILE"; then
         :
@@ -197,15 +196,11 @@ case "$ACTION" in
         rc=$?
         printf '[%s] photos rotator: probe failed rc=%s\n' "$(pedro_log_ts)" "$rc" >> "$LOG_FILE"
       fi
-      # Compute how long the probe took and sleep the remainder of the
-      # interval. Plain `sleep $INTERVAL` drifts because probe + sleep
-      # = INTERVAL + drift, and after many cycles the kiosk would see
-      # one image per 5.3s instead of one per 5.0s — close enough that
-      # you would not notice, but still wrong. Anchor on wall clock.
-      now="$(date +%s.%N)"
-      elapsed=$(awk -v s="$started" -v n="$now" 'BEGIN{printf "%.3f", n-s}')
-      remaining=$(awk -v i="$INTERVAL" -v e="$elapsed" 'BEGIN{v=i-e; if(v<0)v=0; printf "%.3f", v}')
-      sleep "$remaining"
+      # Always give the committed frame a full configured dwell after the
+      # probe completes. A manifest refresh can be slow; never compensate
+      # with zero sleep, which would flash the next frame immediately after
+      # the slow probe and make dwell times visibly uneven.
+      sleep "$INTERVAL"
     done
     ;;
   *)

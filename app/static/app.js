@@ -890,18 +890,13 @@
     var stageEl = root.querySelector(".slideshow__stage");
     if (!stageEl) return;
     var layers = stageEl.querySelectorAll(".slideshow__layer");
-    for (var i = 0; i < layers.length; i++) {
-      var wasActive = layers[i].classList.contains("is-active");
-      layers[i].className = "slideshow__layer " + photoClass;
-      if (wasActive) layers[i].classList.add("is-active");
-    }
     var prevUrl = stageEl.getAttribute("data-current-url") || "";
     var pendingUrl = stageEl.getAttribute("data-pending-url") || "";
     var everPainted = stageEl.getAttribute("data-ever-painted") === "1";
     if (!everPainted) {
+      layers[0].className = "slideshow__layer " + photoClass + " is-active";
+      layers[1].className = "slideshow__layer slideshow__photo";
       setSlideshowLayerBackground(layers[0], imageUrl);
-      layers[0].classList.add("is-active");
-      layers[1].classList.remove("is-active");
       stageEl.setAttribute("data-current-url", imageUrl);
       stageEl.setAttribute("data-ever-painted", "1");
     } else if (prevUrl !== imageUrl && pendingUrl !== imageUrl) {
@@ -1060,18 +1055,13 @@
     setText(stageEl.querySelector("[data-meta-album]"), album);
     setText(stageEl.querySelector("[data-meta-counter]"), total ? current + " / " + total : "");
     var layers = stageEl.querySelectorAll(".fullscreen-slideshow__layer");
-    for (var i = 0; i < layers.length; i++) {
-      var wasActive = layers[i].classList.contains("is-active");
-      layers[i].className = "fullscreen-slideshow__layer " + photoClass;
-      if (wasActive) layers[i].classList.add("is-active");
-    }
     var prevUrl = stageEl.getAttribute("data-current-url") || "";
     var pendingUrl = stageEl.getAttribute("data-pending-url") || "";
     var everPainted = stageEl.getAttribute("data-ever-painted") === "1";
     if (!everPainted) {
+      layers[0].className = "fullscreen-slideshow__layer " + photoClass + " is-active";
+      layers[1].className = "fullscreen-slideshow__layer fullscreen-slideshow__photo";
       setLayerBackground(layers[0], imageUrl);
-      layers[0].classList.add("is-active");
-      layers[1].classList.remove("is-active");
       stageEl.setAttribute("data-current-url", imageUrl);
       stageEl.setAttribute("data-ever-painted", "1");
     } else if (prevUrl !== imageUrl && pendingUrl !== imageUrl) {

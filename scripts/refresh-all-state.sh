@@ -74,6 +74,10 @@ fi
 for probe in refresh-system-status.py refresh-hermes-status.py refresh-openviking-status.py refresh-season-skin.py refresh-weather-status.py refresh-route-status.py refresh-polsat-status.py refresh-photos-slideshow.py refresh-kamila-calendar.py refresh-vnl-volleyball.py refresh-eurovolley.py; do
   if [[ -f "$SCRIPT_DIR/$probe" ]]; then
     if [[ "$probe" == "refresh-photos-slideshow.py" ]] && [[ "$photos_owned" == "1" ]]; then
+      # The hot rotator must never wait on a network album refresh. Keep the
+      # cached queue current in a separate manifest-only operation; it never
+      # reads or writes media.json.
+      "$PY_BIN" "$SCRIPT_DIR/$probe" --manifest-only >/dev/null || status=$?
       continue
     fi
     probe_py="$PY_BIN"

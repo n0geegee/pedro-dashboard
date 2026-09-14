@@ -130,6 +130,8 @@ fi
 # Use --no-first-run and a dedicated profile to avoid polluting the user's
 # default Chrome state. --noerrdialogs and the update/crash-bubble guards keep
 # native Chrome notifications from protruding over the passive kiosk surface.
+# --disable-background-networking also prevents the built-in update checker
+# from creating its "Chrome could not update" notification window.
 #
 # setsid(2) detaches Chrome from this script's session: the immediate child
 # of this shell is the setsid/glibc helper, not the long-lived Chrome
@@ -146,6 +148,7 @@ setsid "$CHROME_BIN" \
   --noerrdialogs \
   --disable-session-crashed-bubble \
   --disable-component-update \
+  --disable-background-networking \
   --disable-background-timer-throttling \
   --disable-renderer-backgrounding \
   --disable-backgrounding-occluded-windows \
