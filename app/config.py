@@ -34,6 +34,15 @@ VERSION_FILE: Path = PROJECT_ROOT / "VERSION"
 STATIC_DIR: Path = APP_DIR / "static"
 STATE_DIR: Path = APP_DIR / "state"
 LOGS_DIR: Path = APP_DIR / "logs"
+# Operator-controlled runtime state lives outside the tracked checkout.  The
+# lifecycle scripts export the same override when they launch the server.
+DEFAULT_RUNTIME_DIR: Path = Path.home() / ".local" / "state" / "pedro_dashboard"
+RUNTIME_DIR: Path = Path(
+    os.environ.get("PEDRO_STATE_DIR", str(DEFAULT_RUNTIME_DIR))
+).expanduser()
+DISPLAY_CONTROL_FILE: Path = Path(
+    os.environ.get("PEDRO_DISPLAY_CONTROL_FILE", str(RUNTIME_DIR / "display-control.json"))
+).expanduser()
 
 # ---------------------------------------------------------------------------
 # Defaults (match runtime scripts/_lifecycle_common.sh)
@@ -92,6 +101,9 @@ __all__ = [
     "STATIC_DIR",
     "STATE_DIR",
     "LOGS_DIR",
+    "DEFAULT_RUNTIME_DIR",
+    "RUNTIME_DIR",
+    "DISPLAY_CONTROL_FILE",
     "DEFAULT_HOST",
     "DEFAULT_PORT",
     "DEFAULT_PRIVACY_MODE",

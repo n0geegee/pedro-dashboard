@@ -580,6 +580,264 @@ body > * { position: relative; z-index: 1; }
   font-size: 12px;
 }
 
+/* ========== EUROVOLLEY SCHEDULE MODULES ========== */
+
+.euro-schedule {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  align-self: stretch;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  color: var(--fg);
+}
+.euro-schedule__intro {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--line);
+}
+.euro-schedule__kicker {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg-soft);
+  font-size: 13px;
+  font-weight: 850;
+  letter-spacing: 0.5px;
+}
+.euro-schedule__freshness {
+  flex: 0 0 auto;
+  color: var(--fg-mute);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.35px;
+  white-space: nowrap;
+}
+.euro-schedule__gender-section,
+.euro-schedule__day {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 100%;
+  align-self: stretch;
+  min-width: 0;
+  min-height: 0;
+}
+.euro-schedule__section-title,
+.euro-schedule__day-title {
+  margin: 2px 0 1px;
+  color: var(--fg-mute);
+  font-size: 11px;
+  font-weight: 850;
+  letter-spacing: 0.7px;
+  text-transform: uppercase;
+}
+.euro-schedule__day-title {
+  color: var(--fg-soft);
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 2px;
+}
+.euro-schedule__row {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: 31px;
+  padding: 4px 7px;
+  border: 1px solid var(--line-2);
+  border-radius: 7px;
+  background: rgba(18, 24, 34, 0.63);
+}
+.euro-schedule--poland .euro-schedule__row {
+  grid-template-columns: 92px minmax(0, 1fr) auto;
+  min-height: 34px;
+}
+.euro-schedule__when {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.euro-schedule__date {
+  color: var(--fg-soft);
+  font-size: 10px;
+  font-weight: 850;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.euro-schedule__time {
+  color: var(--fg-mute);
+  font-size: 11px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.euro-schedule__match {
+  min-width: 0;
+}
+.euro-schedule__teams {
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
+  gap: 5px;
+  line-height: 1.1;
+}
+.euro-schedule__team {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg);
+  font-size: 13px;
+  font-weight: 800;
+}
+.euro-schedule__versus {
+  flex: 0 0 auto;
+  color: var(--fg-dim);
+  font-size: 11px;
+  font-weight: 800;
+}
+.euro-schedule__meta {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  margin-top: 2px;
+  color: var(--fg-mute);
+  font-size: 10px;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+.euro-schedule__gender {
+  flex: 0 0 auto;
+  min-width: 18px;
+  padding: 1px 4px;
+  border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 4px;
+  color: var(--fg-soft);
+  font-size: 9px;
+  font-weight: 900;
+  text-align: center;
+}
+.euro-schedule__row[data-gender="K"] .euro-schedule__gender {
+  color: #ffb0c0;
+  border-color: rgba(255, 120, 150, 0.45);
+}
+.euro-schedule__row[data-gender="M"] .euro-schedule__gender {
+  color: #a9c9ff;
+  border-color: rgba(110, 170, 255, 0.45);
+}
+.euro-schedule__phase {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.euro-schedule__status {
+  min-width: 42px;
+  color: var(--fg-mute);
+  font-size: 10px;
+  font-weight: 900;
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.euro-schedule__status--finished { color: var(--green); }
+.euro-schedule__status--live { color: var(--red); }
+.euro-schedule__status--postponed { color: var(--orange); }
+.euro-schedule__table {
+  width: 100%;
+  min-width: 100%;
+  table-layout: fixed;
+  border-collapse: separate;
+  border-spacing: 0 3px;
+}
+.euro-schedule__table-col--time { width: 72px; }
+.euro-schedule__table-col--gender { width: 38px; }
+.euro-schedule__table-col--status { width: 132px; }
+.euro-schedule__table-head {
+  padding: 0 6px 1px;
+  color: var(--fg-mute);
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.55px;
+  text-align: left;
+  white-space: nowrap;
+}
+.euro-schedule__table-head:nth-child(3) { text-align: center; }
+.euro-schedule__table-head:last-child { text-align: right; }
+.euro-schedule__table-row > td {
+  min-width: 0;
+  padding: 5px 6px;
+  border-top: 1px solid var(--line-2);
+  border-bottom: 1px solid var(--line-2);
+  background: rgba(18, 24, 34, 0.63);
+  vertical-align: middle;
+}
+.euro-schedule__table-row > td:first-child {
+  border-left: 1px solid var(--line-2);
+  border-radius: 7px 0 0 7px;
+}
+.euro-schedule__table-row > td:last-child {
+  border-right: 1px solid var(--line-2);
+  border-radius: 0 7px 7px 0;
+}
+.euro-schedule__table-when,
+.euro-schedule__table-match {
+  min-width: 0;
+}
+.euro-schedule__table-gender {
+  text-align: center;
+}
+.euro-schedule__table-status {
+  min-width: 0;
+  text-align: right;
+}
+.euro-schedule__table-status-content {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  min-width: 0;
+}
+.euro-schedule__table-status-content > .euro-schedule__status {
+  min-width: 0;
+}
+.euro-schedule__prediction {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--red);
+  font-size: 9px;
+  font-weight: 900;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+.euro-schedule__table-row[data-gender="K"] .euro-schedule__gender {
+  color: #ffb0c0;
+  border-color: rgba(255, 120, 150, 0.45);
+}
+.euro-schedule__table-row[data-gender="M"] .euro-schedule__gender {
+  color: #a9c9ff;
+  border-color: rgba(110, 170, 255, 0.45);
+}
+.euro-schedule__empty {
+  margin: 8px 0;
+  color: var(--fg-mute);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
 /* ========== LL TBD ========== */
 
 .tbd {
@@ -1019,8 +1277,7 @@ body > * { position: relative; z-index: 1; }
   position: absolute;
   inset: 0;
   opacity: 0;
-  transition: opacity 0.35s ease-in-out;
-  will-change: opacity;
+  /* Swap the two layers immediately; there is no opacity animation. */
 }
 .slideshow__layer.is-active {
   opacity: 1;
@@ -1080,16 +1337,16 @@ body > * { position: relative; z-index: 1; }
   background-repeat: no-repeat;
   display: block;
 }
-/* Portrait/square photos: slight overscan makes better use of the LR
-   frame on the room screen while keeping cropping conservative. */
+/* Keep orientation framing identical in the embedded card and full viewport:
+   landscape covers; portrait/square use a black letterbox with no overscan. */
 .slideshow__photo--portrait {
-  background-size: auto 106%;
+  background-size: contain;
   background-position: center center;
   background-repeat: no-repeat;
   background-color: #000;
 }
 .slideshow__photo--square {
-  background-size: auto 104%;
+  background-size: contain;
   background-position: center center;
   background-repeat: no-repeat;
   background-color: #000;
@@ -1157,21 +1414,19 @@ body[data-display-mode="slideshow"] {
   background-position: center center;
   background-repeat: no-repeat;
   background-size: cover;
-  transform: scale(1.002);
+  transform: none;
 }
-/* Two layers stacked, crossfade via opacity transition. The active layer
-   paints the currently-visible photo; the inactive layer holds the upcoming
-   one and is warmed via preload + decode() before being flipped. */
+/* Two layers stacked; the active layer is swapped immediately after the
+   incoming image is warmed and decoded. */
 .fullscreen-slideshow__layer {
   position: absolute;
   inset: 0;
   opacity: 0;
-  transition: opacity 0.45s ease-in-out;
-  will-change: opacity;
+  /* No CSS transition: decoded incoming layer becomes visible immediately. */
   background-position: center center;
   background-repeat: no-repeat;
   background-size: cover;
-  transform: scale(1.002);
+  transform: none;
 }
 .fullscreen-slideshow__layer.is-active {
   opacity: 1;

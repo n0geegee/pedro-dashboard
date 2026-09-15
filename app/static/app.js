@@ -5,13 +5,13 @@
 (function () {
   "use strict";
 
-  // REFRESH_MS is aligned with photos-rotator.sh (slide_seconds, default
-  // 5s) so the kiosk loop picks up exactly one new image per poll. With
-  // the previous 6s cadence, every 5-6 cycles the loop would skip an
-  // image because the rotator had already advanced by two slots between
-  // two polls. 5s keeps the kiosk in lockstep with the rotator.
+  // REFRESH_MS is deliberately slower than the dedicated media poll below.
+  // The full state endpoint fans out to many probes; photos are read through
+  // /api/media at MEDIA_REFRESH_MS so a 3s rotator never gets sampled too late.
   var REFRESH_MS = 3000;
+  var MEDIA_REFRESH_MS = 500;
   var STATE_URL = "/api/state";
+  var MEDIA_URL = "/api/media";
   var HEALTH_URL = "/api/health";
 
   // Replaceable center/right slots. The JSON file is the active assignment;
@@ -21,11 +21,11 @@
   var SLOT_LAYOUT_FALLBACK = {
     schema_version: 1,
     engine: "slots-v1",
-    revision: "fallback-birdwatch-1",
+    revision: "fallback-eurovolley-1",
     slots: {
-      UL: { module: "volleyball", enabled: true },
+      UL: { module: "poland-euro-schedule", enabled: true },
       UR: { module: "polsat-status", enabled: true },
-      LL: { module: "birdwatch", enabled: true },
+      LL: { module: "euro-daily-schedule", enabled: true },
       LR: { module: "photos", enabled: true }
     }
   };
@@ -38,12 +38,16 @@
   // full-viewport dashboard overlay rather than a browser Fullscreen API call.
   var ROTATION_DEFAULT_DASHBOARD_MS = 60 * 1000;
   var ROTATION_DEFAULT_SLIDESHOW_MS = 300 * 1000;
-  var rotationDashboardMs = readDurationParam("dashboardSeconds", ROTATION_DEFAULT_DASHBOARD_MS);
-  var rotationSlideshowMs = readDurationParam("slideshowSeconds", ROTATION_DEFAULT_SLIDESHOW_MS);
-  var rotationEnabled = readRotationEnabled();
+  var rotationQueryOverride = readRotationQueryOverride();
+  var rotationControl = rotationQueryOverride || defaultRotationControl();
+  var activeMediaWidget = null;
+  var mediaLoopBusy = false;
   var rotationState = {
     mode: "dashboard",
-    switchAt: Date.now() + rotationDashboardMs
+    switchAt: Date.now() + ROTATION_DEFAULT_DASHBOARD_MS,
+    commuteActive: false,
+    cycleStartOverrideMs: null,
+    controlKey: "off"
   };
 
   // ---- helpers ----------------------------------------------------------
@@ -66,9 +70,77 @@
     return Math.min(Math.round(n * 1000), 24 * 60 * 60 * 1000);
   }
 
-  function readRotationEnabled() {
-    var raw = (queryParam("rotation") || queryParam("slideshowRotation") || "off").toLowerCase();
-    return !(raw === "0" || raw === "off" || raw === "false" || raw === "dashboard");
+  function defaultRotationControl() {
+    return {
+      enabled: false,
+      dashboardMs: ROTATION_DEFAULT_DASHBOARD_MS,
+      slideshowMs: ROTATION_DEFAULT_SLIDESHOW_MS,
+      photoSeconds: 3,
+      cycleStartedAtMs: null,
+      generation: 0,
+      valid: false
+    };
+  }
+
+  function readRotationQueryOverride() {
+    var raw = queryParam("rotation") || queryParam("slideshowRotation");
+    if (raw == null) return null;
+    raw = String(raw).toLowerCase();
+    if (raw === "0" || raw === "off" || raw === "false" || raw === "dashboard") {
+      return defaultRotationControl();
+    }
+    return {
+      enabled: true,
+      dashboardMs: readDurationParam("dashboardSeconds", ROTATION_DEFAULT_DASHBOARD_MS),
+      slideshowMs: readDurationParam("slideshowSeconds", ROTATION_DEFAULT_SLIDESHOW_MS),
+      photoSeconds: 3,
+      cycleStartedAtMs: Date.now(),
+      generation: -1,
+      valid: true
+    };
+  }
+
+  function rotationControlFromEnvelope(envelope) {
+    var fallback = defaultRotationControl();
+    if (!envelope || envelope.valid !== true) return fallback;
+    var d = envelope.data;
+    if (!d || d.schema_version !== 1 || d.enabled !== true) return fallback;
+    var dashboardSeconds = Number(d.dashboard_seconds);
+    var slideshowSeconds = Number(d.slideshow_seconds);
+    var photoSeconds = Number(d.photo_seconds);
+    var cycleStartedAtMs = Date.parse(String(d.cycle_started_at || ""));
+    if (!isFinite(dashboardSeconds) || dashboardSeconds <= 0
+        || !isFinite(slideshowSeconds) || slideshowSeconds <= 0
+        || !isFinite(photoSeconds) || photoSeconds <= 0
+        || !isFinite(cycleStartedAtMs)) {
+      return fallback;
+    }
+    return {
+      enabled: true,
+      dashboardMs: Math.min(Math.round(dashboardSeconds * 1000), 24 * 60 * 60 * 1000),
+      slideshowMs: Math.min(Math.round(slideshowSeconds * 1000), 24 * 60 * 60 * 1000),
+      photoSeconds: Math.min(Math.round(photoSeconds), 60),
+      cycleStartedAtMs: cycleStartedAtMs,
+      generation: Number(d.generation) || 0,
+      valid: true
+    };
+  }
+
+  function setRotationControl(envelope) {
+    var next = rotationQueryOverride || rotationControlFromEnvelope(envelope);
+    var nextKey = next.enabled
+      ? String(next.generation) + ":" + String(next.cycleStartedAtMs)
+      : "off";
+    if (nextKey !== rotationState.controlKey) {
+      rotationState.cycleStartOverrideMs = null;
+      rotationState.commuteActive = false;
+      rotationState.controlKey = nextKey;
+    }
+    rotationControl = next;
+    if (!rotationControl.enabled) {
+      rotationState.mode = "dashboard";
+      rotationState.switchAt = Date.now() + ROTATION_DEFAULT_DASHBOARD_MS;
+    }
   }
   function el(tag, attrs, html) {
     var n = document.createElement(tag);
@@ -776,70 +848,60 @@
     var d = getSlideshowData(widget);
     var total = d.total || 42;
     var current = Math.max(1, Math.min(total, d.current || 10));
-
     var imageUrl = d.imageUrl || "";
     var album = d.album || "pedro slideshow";
     var photoClass = slideshowPhotoClass(d.orientation);
+    var root = node && node.querySelector(".slideshow");
 
-    var html = "";
-    html += '<div class="slideshow" data-slideshow-current="' + current + '" data-slideshow-total="' + total + '">';
-    if (imageUrl) {
-      // Two stacked photo layers so we can crossfade between slides without
-      // a black gap when the new WebP is still decoding. Only the inactive
-      // layer's background-image changes per render; the active layer keeps
-      // painting the previous photo until the new one is decoded.
-      html += '<div class="slideshow__stage" data-current-url="' + escAttr(imageUrl) + '">';
-      html +=   '<div class="slideshow__layer slideshow__photo slideshow__photo--image is-active" data-layer="a"></div>';
-      html +=   '<div class="slideshow__layer slideshow__photo slideshow__photo--image" data-layer="b"></div>';
-      html += '</div>';
-    } else {
-      html +=   '<div class="slideshow__photo">';
-      html +=     '<div class="slideshow__skyline"></div>';
-      html +=     '<div class="slideshow__lake"></div>';
-      html +=     '<div class="slideshow__trees"></div>';
-      html +=   '</div>';
+    if (!imageUrl) {
+      if (!root || root.getAttribute("data-slideshow-empty") !== "1") {
+        node.innerHTML = '<div class="slideshow" data-slideshow-empty="1"><div class="slideshow__photo">'
+          + '<div class="slideshow__skyline"></div><div class="slideshow__lake"></div>'
+          + '<div class="slideshow__trees"></div></div>'
+          + '<div class="slideshow__caption"></div><div class="slideshow__counter"></div></div>';
+        root = node.querySelector(".slideshow");
+      }
+      if (root) {
+        setText(root.querySelector(".slideshow__caption"), album);
+        setText(root.querySelector(".slideshow__counter"), current + " / " + total);
+      }
+      return;
     }
-    html +=   '<div class="slideshow__caption">' + esc(album) + '</div>';
-    html +=   '<div class="slideshow__counter">' + current + ' / ' + total + '</div>';
-    html += '</div>';
 
-    node.innerHTML = html;
-    if (imageUrl) {
-      var stageEl = node.querySelector(".slideshow__stage");
-      if (stageEl) {
-        var layers = stageEl.querySelectorAll(".slideshow__layer");
-        for (var i = 0; i < layers.length; i++) {
-          layers[i].className = "slideshow__layer slideshow__photo " + photoClass;
-        }
-        // First render: paint the current photo on layer A, leave B empty,
-        // and start a soft preload of the same URL so Chrome warms its
-        // decoder. Subsequent renders detect that the URL changed via
-        // data-current-url and call applySlideshowPhoto for a true crossfade.
-        var prevUrl = stageEl.getAttribute("data-current-url") || "";
-        // Track whether we have EVER painted a photo into this stage. The
-        // boolean is independent of which URL was last painted so that a first
-        // render with prevUrl="" doesn't skip the paint, and a render with the
-        // same URL as the last one still triggers a preload + initial paint.
-        var everPainted = stageEl.getAttribute("data-ever-painted") === "1";
-        if (!everPainted) {
-          // First paint: just place the image on layer A, no transition.
-          setSlideshowLayerBackground(layers[0], imageUrl);
-          layers[0].classList.add("is-active");
-          layers[1].classList.remove("is-active");
-          stageEl.setAttribute("data-current-url", imageUrl);
-          stageEl.setAttribute("data-ever-painted", "1");
-          var warmImg = new Image();
-          warmImg.decoding = "async";
-          warmImg.src = imageUrl;
-        } else if (prevUrl !== imageUrl) {
-          applySlideshowPhoto(stageEl, imageUrl, d.orientation);
-        } else {
-          // Same URL, just refresh labels. Active layer already painted.
-          layers[0].classList.add("is-active");
-          layers[1].classList.remove("is-active");
-        }
-        }
-        }
+    // Build the two-layer stage once. Replacing node.innerHTML on every media
+    // poll would reset data-ever-painted and make the two-layer swap unreliable.
+    if (!root || !root.querySelector(".slideshow__stage")) {
+      node.innerHTML = '<div class="slideshow">'
+        + '<div class="slideshow__stage" data-current-url="">'
+        + '<div class="slideshow__layer slideshow__photo is-active" data-layer="a"></div>'
+        + '<div class="slideshow__layer slideshow__photo" data-layer="b"></div>'
+        + '</div>'
+        + '<div class="slideshow__caption"></div>'
+        + '<div class="slideshow__counter"></div>'
+        + '</div>';
+      root = node.querySelector(".slideshow");
+    }
+    if (!root) return;
+    root.setAttribute("data-slideshow-current", String(current));
+    root.setAttribute("data-slideshow-total", String(total));
+    setText(root.querySelector(".slideshow__caption"), album);
+    setText(root.querySelector(".slideshow__counter"), current + " / " + total);
+
+    var stageEl = root.querySelector(".slideshow__stage");
+    if (!stageEl) return;
+    var layers = stageEl.querySelectorAll(".slideshow__layer");
+    var prevUrl = stageEl.getAttribute("data-current-url") || "";
+    var pendingUrl = stageEl.getAttribute("data-pending-url") || "";
+    var everPainted = stageEl.getAttribute("data-ever-painted") === "1";
+    if (!everPainted) {
+      layers[0].className = "slideshow__layer " + photoClass + " is-active";
+      layers[1].className = "slideshow__layer slideshow__photo";
+      setSlideshowLayerBackground(layers[0], imageUrl);
+      stageEl.setAttribute("data-current-url", imageUrl);
+      stageEl.setAttribute("data-ever-painted", "1");
+    } else if (prevUrl !== imageUrl && pendingUrl !== imageUrl) {
+      applySlideshowPhoto(stageEl, imageUrl, d.orientation);
+    }
   }
 
   function setSlideshowLayerBackground(layerEl, url) {
@@ -860,16 +922,25 @@
     }
     if (!active) active = layers[0];
     if (!inactive) inactive = layers[layers.length - 1];
-    inactive.className = "slideshow__layer slideshow__photo " + photoClass;
+    if (!active || !inactive) return;
+    var requestId = (parseInt(stageEl.getAttribute("data-photo-request") || "0", 10) || 0) + 1;
+    stageEl.setAttribute("data-photo-request", String(requestId));
+    stageEl.setAttribute("data-pending-url", nextUrl);
+    inactive.className = "slideshow__layer " + photoClass;
     setSlideshowLayerBackground(inactive, nextUrl);
     var nextImg = new Image();
     nextImg.decoding = "async";
     var flip = function () {
+      if (stageEl.getAttribute("data-photo-request") !== String(requestId)) return;
       requestAnimationFrame(function () {
+        if (stageEl.getAttribute("data-photo-request") !== String(requestId)) return;
         inactive.classList.add("is-active");
         active.classList.remove("is-active");
       });
       stageEl.setAttribute("data-current-url", nextUrl);
+      if (stageEl.getAttribute("data-pending-url") === nextUrl) {
+        stageEl.removeAttribute("data-pending-url");
+      }
     };
     nextImg.onload = function () {
       if (typeof nextImg.decode === "function") {
@@ -961,53 +1032,41 @@
     else if (d.orientation === "square") photoClass += " fullscreen-slideshow__photo--square";
 
     if (!imageUrl) {
-      overlay.innerHTML = '<div class="fullscreen-slideshow__empty">Brak zdjęć do pełnego ekranu</div>';
+      if (!overlay.querySelector(".fullscreen-slideshow__empty")) {
+        overlay.innerHTML = '<div class="fullscreen-slideshow__empty">Brak zdjęć do pełnego ekranu</div>';
+      }
       return;
     }
 
-    // Two stacked photos so we can crossfade instead of cutting black. The
-    // first render installs both layers in the "stage is current" state;
-    // later renders detect a URL change via data-current-url and call
-    // applyFullscreenPhoto for a true crossfade. The active layer keeps
-    // painting the previous photo until the new WebP finishes decoding.
-    var html = "";
-    html += '<div class="fullscreen-slideshow__stage" data-current-url="' + escAttr(imageUrl) + '">';
-    html +=   '<div class="fullscreen-slideshow__layer fullscreen-slideshow__photo is-active" data-layer="a"></div>';
-    html +=   '<div class="fullscreen-slideshow__layer fullscreen-slideshow__photo" data-layer="b"></div>';
-    html +=   '<div class="fullscreen-slideshow__shade"></div>';
-    html +=   '<div class="fullscreen-slideshow__label">SLIDESHOW</div>';
-    html +=   '<div class="fullscreen-slideshow__meta">';
-    html +=     '<span>' + esc(album) + '</span>';
-    if (total) html += '<span>' + current + ' / ' + total + '</span>';
-    html +=   '</div>';
-    html += '</div>';
-    overlay.innerHTML = html;
+    // Keep the stage alive across the 500ms media poll. Rebuilding the overlay
+    // would discard the active layer and turn every update into a hard cut.
     var stageEl = overlay.querySelector(".fullscreen-slideshow__stage");
-    if (stageEl) {
-      var layers = stageEl.querySelectorAll(".fullscreen-slideshow__layer");
-      for (var i = 0; i < layers.length; i++) {
-        layers[i].className = "fullscreen-slideshow__layer fullscreen-slideshow__photo " + photoClass;
-      }
-      var prevUrl = stageEl.getAttribute("data-prev-url") || "";
-      var everPainted = stageEl.getAttribute("data-ever-painted") === "1";
-      if (!everPainted) {
-        // First paint: just place the image on layer A, no transition.
-        setLayerBackground(layers[0], imageUrl);
-        layers[0].classList.add("is-active");
-        layers[1].classList.remove("is-active");
-        stageEl.setAttribute("data-current-url", imageUrl);
-        stageEl.setAttribute("data-ever-painted", "1");
-      } else if (prevUrl !== imageUrl) {
-        applyFullscreenPhoto(stageEl, imageUrl, d.orientation);
-      } else {
-        layers[0].classList.add("is-active");
-        layers[1].classList.remove("is-active");
-      }
-      // Remember this URL for the next render's diff.
-      stageEl.setAttribute("data-prev-url", imageUrl);
+    if (!stageEl) {
+      overlay.innerHTML = '<div class="fullscreen-slideshow__stage" data-current-url="">'
+        + '<div class="fullscreen-slideshow__layer fullscreen-slideshow__photo" data-layer="a"></div>'
+        + '<div class="fullscreen-slideshow__layer fullscreen-slideshow__photo" data-layer="b"></div>'
+        + '<div class="fullscreen-slideshow__shade"></div>'
+        + '<div class="fullscreen-slideshow__label">SLIDESHOW</div>'
+        + '<div class="fullscreen-slideshow__meta"><span data-meta-album></span><span data-meta-counter></span></div>'
+        + '</div>';
+      stageEl = overlay.querySelector(".fullscreen-slideshow__stage");
     }
-    // Preload + warm up the next image so the swap is instant.
-    preloadNextImage(d);
+    if (!stageEl) return;
+    setText(stageEl.querySelector("[data-meta-album]"), album);
+    setText(stageEl.querySelector("[data-meta-counter]"), total ? current + " / " + total : "");
+    var layers = stageEl.querySelectorAll(".fullscreen-slideshow__layer");
+    var prevUrl = stageEl.getAttribute("data-current-url") || "";
+    var pendingUrl = stageEl.getAttribute("data-pending-url") || "";
+    var everPainted = stageEl.getAttribute("data-ever-painted") === "1";
+    if (!everPainted) {
+      layers[0].className = "fullscreen-slideshow__layer " + photoClass + " is-active";
+      layers[1].className = "fullscreen-slideshow__layer fullscreen-slideshow__photo";
+      setLayerBackground(layers[0], imageUrl);
+      stageEl.setAttribute("data-current-url", imageUrl);
+      stageEl.setAttribute("data-ever-painted", "1");
+    } else if (prevUrl !== imageUrl && pendingUrl !== imageUrl) {
+      applyFullscreenPhoto(stageEl, imageUrl, d.orientation);
+    }
   }
 
   function setLayerBackground(layerEl, url) {
@@ -1029,9 +1088,9 @@
   }
 
   // Push the next photo URL into the inactive layer, decode it, then flip
-  // the .is-active class so CSS crossfades. Decoding before the swap is the
-  // actual anti-black-gap fix — without it, Chrome would paint the new layer
-  // before the JPEG/WebP finished decoding, producing a visible flash.
+  // the .is-active class immediately. Decoding before the swap is the actual
+  // anti-black-gap fix — without it, Chrome could paint the new layer before
+  // the JPEG/WebP finished decoding, producing a visible flash.
   function applyFullscreenPhoto(stageEl, nextUrl, orientation) {
     if (!stageEl || !nextUrl) return;
     var photoClass = "fullscreen-slideshow__photo";
@@ -1040,19 +1099,26 @@
     var inactive = pickInactiveLayer(stageEl);
     var active = stageEl.querySelector(".fullscreen-slideshow__layer.is-active") || stageEl.querySelectorAll(".fullscreen-slideshow__layer")[0];
     if (!inactive || !active) return;
-    inactive.className = "fullscreen-slideshow__layer fullscreen-slideshow__photo " + photoClass;
+    var requestId = (parseInt(stageEl.getAttribute("data-photo-request") || "0", 10) || 0) + 1;
+    stageEl.setAttribute("data-photo-request", String(requestId));
+    stageEl.setAttribute("data-pending-url", nextUrl);
+    inactive.className = "fullscreen-slideshow__layer " + photoClass;
     setLayerBackground(inactive, nextUrl);
     var nextImg = new Image();
     nextImg.decoding = "async";
     var flip = function () {
+      if (stageEl.getAttribute("data-photo-request") !== String(requestId)) return;
       // Force a single rAF so the browser registers the new background-image
-      // before we toggle opacity — otherwise the crossfade can be skipped on
-      // fast hardware.
+      // before the immediate layer swap on fast hardware.
       requestAnimationFrame(function () {
+        if (stageEl.getAttribute("data-photo-request") !== String(requestId)) return;
         inactive.classList.add("is-active");
         active.classList.remove("is-active");
       });
       stageEl.setAttribute("data-current-url", nextUrl);
+      if (stageEl.getAttribute("data-pending-url") === nextUrl) {
+        stageEl.removeAttribute("data-pending-url");
+      }
     };
     nextImg.onload = function () {
       if (typeof nextImg.decode === "function") {
@@ -1067,7 +1133,7 @@
 
   // Kick off a background preload for the image the rotator will most likely
   // serve next (current+1, modulo total). This gives Chrome a head start so
-  // the actual crossfade in applyFullscreenPhoto is instant. We don't await
+  // the actual layer swap in applyFullscreenPhoto is instant. We don't await
   // — it's pure opportunistic warming of the HTTP/disk cache.
   function preloadNextImage(d) {
     if (!d || !d.total || !d.imageUrl) return;
@@ -1083,8 +1149,10 @@
   }
 
   function updateDisplayRotation(widget) {
-    if (!rotationEnabled) {
+    var control = rotationControl;
+    if (!control || !control.enabled) {
       setDisplayMode("dashboard");
+      document.body.setAttribute("data-display-rotation-next", "");
       return;
     }
     var d = getSlideshowData(widget);
@@ -1098,28 +1166,57 @@
     var now = Date.now();
     // Morning commute window: force dashboard-only and never activate the
     // fullscreen slideshow overlay. The embedded slideshow card on the
-    // dashboard remains untouched. Keep pushing switchAt forward so the
-    // very first tick after 07:40 resumes the normal cycle cleanly
-    // instead of trying to immediately honour a stale switchAt.
+    // dashboard remains untouched. When the guard ends, begin a clean
+    // dashboard phase rather than dropping into a stale slideshow phase.
     if (isCommuteDashboardWindowWarsaw(now)) {
-      rotationState.switchAt = now + rotationDashboardMs;
+      rotationState.commuteActive = true;
+      rotationState.cycleStartOverrideMs = null;
+      rotationState.switchAt = now + control.dashboardMs;
       setDisplayMode("dashboard");
       document.body.setAttribute("data-display-rotation-next", String(rotationState.switchAt));
       return;
     }
-
-    if (now >= rotationState.switchAt) {
-      if (rotationState.mode === "dashboard") {
-        setDisplayMode("slideshow");
-        rotationState.switchAt = now + rotationSlideshowMs;
-      } else {
-        setDisplayMode("dashboard");
-        rotationState.switchAt = now + rotationDashboardMs;
-      }
-    } else {
-      setDisplayMode(rotationState.mode);
+    if (rotationState.commuteActive) {
+      rotationState.commuteActive = false;
+      rotationState.cycleStartOverrideMs = now;
     }
+
+    var cycleStart = rotationState.cycleStartOverrideMs || control.cycleStartedAtMs;
+    if (!isFinite(cycleStart) || now < cycleStart) {
+      rotationState.mode = "dashboard";
+      rotationState.switchAt = now + control.dashboardMs;
+      setDisplayMode("dashboard");
+      document.body.setAttribute("data-display-rotation-next", String(rotationState.switchAt));
+      return;
+    }
+    var plan = planDisplayRotation(control, now, cycleStart);
+    rotationState.mode = plan.mode;
+    rotationState.switchAt = plan.nextAtMs;
+    setDisplayMode(rotationState.mode);
     document.body.setAttribute("data-display-rotation-next", String(rotationState.switchAt));
+  }
+
+  function planDisplayRotation(control, nowMs, cycleStartMs) {
+    var planner = window.PedroDisplayRotation;
+    if (planner && typeof planner.plan === "function") {
+      return planner.plan({
+        enabled: control.enabled,
+        dashboardMs: control.dashboardMs,
+        slideshowMs: control.slideshowMs,
+        cycleStartedAtMs: cycleStartMs
+      }, nowMs);
+    }
+    var dashboardMs = control.dashboardMs;
+    var slideshowMs = control.slideshowMs;
+    var cycleMs = dashboardMs + slideshowMs;
+    var phase = (nowMs - cycleStartMs) % cycleMs;
+    var inDashboard = phase < dashboardMs;
+    var remaining = inDashboard ? dashboardMs - phase : cycleMs - phase;
+    return {
+      mode: inDashboard ? "dashboard" : "slideshow",
+      nextAtMs: nowMs + Math.max(1, remaining),
+      reason: "cycle"
+    };
   }
 
   // ---- escape utilities -------------------------------------------------
@@ -1136,12 +1233,15 @@
   }
 
 
-  // Ticker text formats. Kept dead-simple on purpose: a kitchen reader
-  // scanning the bottom strip has ~3 seconds per item, so the only fields
-  // we show are WHO and HOW MUCH. No dates, no weekday, no competition
-  // name, no "następny:" / "LIVE:" prefix noise. Group letter (K/M) is
-  // omitted because all readers already know if they care about men's
-  // or women's results.
+  // Ticker text formats. Keep the line compact: WHO + HOW MUCH, with the
+  // competition group and Warsaw date in the result's closing parentheses.
+  // No weekday, competition name, or "następny:" / "LIVE:" prefix noise.
+  function tickerDate(m) {
+    var raw = String((m && (m.date || m.warsaw_date || m.sourceDate || m.source_date)) || "");
+    var match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
+    return match ? (match[3] + "." + match[2]) : raw;
+  }
+
   function resultTickerText(m) {
     if (!m) return null;
     var home = teamName(m.home || { name: "Polska" });
@@ -1152,9 +1252,11 @@
             : null);
     if (!score) return null;
     var txt = home + " " + score + " " + away;
-    // Append (K)/(M) when group is known — user wants women vs men
-    // distinguishable at-a-glance on the bottom ticker (2026-06-19).
-    if (m._group === "K" || m._group === "M") txt += " (" + m._group + ")";
+    var details = [];
+    if (m._group === "K" || m._group === "M") details.push(m._group);
+    var date = tickerDate(m);
+    if (date) details.push(date);
+    if (details.length) txt += " (" + details.join(" · ") + ")";
     return txt;
   }
 
@@ -1174,65 +1276,76 @@
     return home + " vs " + away;
   }
 
+  function euroVolleyTickerRows(widgets) {
+    var widget = widgets && widgets.eurovolley;
+    var modules = window.PedroEuroScheduleModules || {};
+    if (typeof modules.normalizeTicker === "function") {
+      var model = modules.normalizeTicker(widget);
+      return model && Array.isArray(model.rows) ? model.rows : [];
+    }
+    return [];
+  }
+
+  function tickerGroup(m) {
+    return m && (m.gender === "K" || m.gender === "M") ? m.gender : "";
+  }
+
+  function tickerStartAt(m) {
+    return (m && (m.startAt || m.start_at || m.date)) || "";
+  }
+
+  function tickerScore(m) {
+    if (!m) return null;
+    if (m.home_sets != null && m.away_sets != null) {
+      return m.home_sets + ":" + m.away_sets;
+    }
+    if (typeof m.score === "string" && m.score.trim()) {
+      return m.score.trim().split(/\s+/)[0];
+    }
+    return null;
+  }
+
   function renderTicker(widgets) {
     var track = document.getElementById("ticker-track");
     if (!track) return;
-    var vb = widgets && widgets.volleyball && widgets.volleyball.data ? widgets.volleyball.data : {};
-    var recent = vb.recent_results || {};
-    var menResults = Array.isArray(recent.men) ? recent.men : [];
-    var womenResults = Array.isArray(recent.women) ? recent.women : [];
-    var men = Array.isArray(vb.men) ? vb.men : [];
-    var women = Array.isArray(vb.women) ? vb.women : [];
+    var rows = euroVolleyTickerRows(widgets);
     var items = [];
-    var now = nowMs();
 
-    // Order: LIVE (if any) → most recent results (latest first, max 6) →
-    // nothing else. We deliberately do NOT show "następny" / "termin"
-    // items in the ticker — those belong in the widget above and they
-    // were the main source of the noise Jurand reported on 2026-06-18.
+    // Order: LIVE (if any) → the three most recent completed matches for
+    // Poland across women and men. Upcoming fixtures belong in UL/LL, not
+    // in this compact strip.
 
-    // 1. LIVE matches first. The reader wants to know "who is playing
-    //    right now" before anything else.
-    var combinedAll = [];
-    men.forEach(function (m) { combinedAll.push({ group: "M", match: m }); });
-    women.forEach(function (m) { combinedAll.push({ group: "K", match: m }); });
-    combinedAll.forEach(function (entry) {
-      var st = matchStatus(entry.match, now);
-      if (st.status === "LIVE") {
-        var s = liveTickerText(Object.assign({}, entry.match, { _group: entry.group }));
+    // 1. LIVE matches first. Trust the normalized CEV status instead of
+    // deriving a live window from start_at; finished matches can have a
+    // recent timestamp and must not be relabelled LIVE.
+    rows.filter(function (m) { return m.status === "live"; })
+      .sort(function (a, b) {
+        return tickerStartAt(a).localeCompare(tickerStartAt(b));
+      })
+      .forEach(function (m) {
+        var live = Object.assign({}, m, { _group: tickerGroup(m) });
+        var s = liveTickerText(live);
         if (s) items.push(s);
-      }
-    });
-
-    // 2. Recent results. Sort newest → oldest by date desc, take up to 6.
-    //    "3:2 (19:25, 18:25, 25:22, 25:21, 15:11)" is the full string
-    //    from m.score — but for the ticker we want just the SET COUNT
-    //    (e.g. "3:2"), not the per-set breakdown. m.score is currently
-    //    "3:2 (19:25, ...)" so we strip the parenthesised breakdown.
-    var combinedResults = [];
-    menResults.forEach(function (m) { combinedResults.push({ group: "M", match: m }); });
-    womenResults.forEach(function (m) { combinedResults.push({ group: "K", match: m }); });
-    combinedResults.sort(function (a, b) {
-      var ad = (a.match && (a.match.start_at || a.match.date)) || "";
-      var bd = (b.match && (b.match.start_at || b.match.date)) || "";
-      return String(bd).localeCompare(String(ad));
-    });
-    combinedResults.slice(0, 6).forEach(function (entry) {
-      // Build a synthetic match with just the set count so resultTickerText
-      // produces "Polska 3:2 Ukraine" rather than the full per-set dump.
-      var m = entry.match || {};
-      var trimmed = Object.assign({}, m, {
-        _group: entry.group,
-        score: (m.home_sets != null && m.away_sets != null)
-                 ? (m.home_sets + ":" + m.away_sets)
-                 : null
       });
-      var s = resultTickerText(trimmed);
+
+    // 2. Completed/current results. The module state contains the official
+    // score; trim any per-set breakdown so the ticker stays readable.
+    rows.filter(function (m) {
+      return m.status !== "live" && (m.status === "finished" || tickerScore(m) != null);
+    }).sort(function (a, b) {
+      return tickerStartAt(b).localeCompare(tickerStartAt(a));
+    }).slice(0, 3).forEach(function (m) {
+      var result = Object.assign({}, m, {
+        _group: tickerGroup(m),
+        score: tickerScore(m)
+      });
+      var s = resultTickerText(result);
       if (s) items.push(s);
     });
 
-    if (!items.length) items.push("Brak wyników ostatnich meczów");
-    track.innerHTML = items.map(function (x) { return '<span>' + esc(x) + '</span>'; }).join('');
+    track.innerHTML = items.length
+      ? items.map(function (x) { return '<span>' + esc(x) + '</span>'; }).join('')
+      : '';
   }
 
   // ---- slot runtime adapters --------------------------------------------
@@ -1271,7 +1384,8 @@
   }
 
   function createSlotRegistry() {
-    return {
+    var euroModules = window.PedroEuroScheduleModules || {};
+    var registry = {
       legacy: {
         id: "legacy",
         contractVersion: 1,
@@ -1288,6 +1402,9 @@
       birdwatch: makeRenderModule("birdwatch", ["LL"], ["ll_tbd"], renderTBD),
       photos: makeRenderModule("photos", ["LR"], ["media"], renderSlideshow)
     };
+    if (euroModules.polandEuroSchedule) registry["poland-euro-schedule"] = euroModules.polandEuroSchedule;
+    if (euroModules.euroDailySchedule) registry["euro-daily-schedule"] = euroModules.euroDailySchedule;
+    return registry;
   }
 
   function renderLegacySlotState(state) {
@@ -1363,6 +1480,10 @@
   function applyState(state) {
     if (!state || !state.widgets) return;
     var w = state.widgets;
+    setRotationControl(state.display_control);
+    var mediaWidget = activeMediaWidget || w.media || null;
+    if (!activeMediaWidget && w.media) activeMediaWidget = w.media;
+    document.body.setAttribute("data-display-control", rotationControl.enabled ? "on" : "off");
     // URL/localStorage override wins over the state-driven skin so a
     // user (or a tester) can preview a skin without changing server state.
     var urlSkin = applyUrlSkinOverride();
@@ -1385,13 +1506,20 @@
       if (node) renderCard(p[0], node, w[p[0]]);
     });
 
-    if (slotRuntime) slotRuntime.update(state);
-    else renderLegacySlotState(state);
+    var renderState = state;
+    if (mediaWidget && w.media !== mediaWidget) {
+      renderState = Object.assign({}, state, {
+        widgets: Object.assign({}, w, { media: mediaWidget })
+      });
+    }
+    if (slotRuntime) slotRuntime.update(renderState);
+    else renderLegacySlotState(renderState);
 
     // Fullscreen slideshow and rotation policy stay shell-owned. The LR
-    // module only owns the ordinary slideshow card body.
-    renderFullscreenSlideshow(w.media);
-    updateDisplayRotation(w.media);
+    // module only owns the ordinary slideshow card body, and both use the
+    // same freshest media snapshot so /api/state cannot rewind /api/media.
+    renderFullscreenSlideshow(mediaWidget);
+    updateDisplayRotation(mediaWidget);
     renderTicker(w);
   }
 
@@ -1425,6 +1553,37 @@
     applyState(state);
   }
 
+  function photosSlotIsActive() {
+    if (!slotRuntime) return true;
+    try {
+      var assignment = slotRuntime.getLayout().slots.LR;
+      return !!assignment && assignment.enabled !== false && assignment.module === "photos";
+    } catch (e) {
+      return false;
+    }
+  }
+
+  async function mediaLoop() {
+    if (mediaLoopBusy) return;
+    mediaLoopBusy = true;
+    try {
+      var payload = await safeFetch(MEDIA_URL);
+      if (!payload || !payload.media) return;
+      setRotationControl(payload.display_control);
+      rotationControl = rotationQueryOverride || rotationControl;
+      activeMediaWidget = payload.media;
+      document.body.setAttribute("data-display-control", rotationControl.enabled ? "on" : "off");
+      if (photosSlotIsActive()) {
+        var host = resolveSlotHost("LR");
+        if (host) renderSlideshow(host, payload.media);
+      }
+      renderFullscreenSlideshow(payload.media);
+      updateDisplayRotation(payload.media);
+    } finally {
+      mediaLoopBusy = false;
+    }
+  }
+
 
   // Hermes Oracle: add 4 corner ornaments + ornamental side accents to
   // every .card when the active skin is "oracle". Pure DOM, no React.
@@ -1453,7 +1612,9 @@
     setInterval(tickClock, 30000);
     applyOracleOrnaments();
     loop();
+    mediaLoop();
     setInterval(loop, REFRESH_MS);
+    setInterval(mediaLoop, MEDIA_REFRESH_MS);
   }
 
   // Skin can change at runtime (e.g. via ?skin= override or set-skin).

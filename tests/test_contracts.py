@@ -107,6 +107,30 @@ class StateContractTests(unittest.TestCase):
                 )
 
 
+class EuroVolleyContractTests(unittest.TestCase):
+    """EuroVolley exposes both official 2026 competitions to the kiosk."""
+
+    def test_eurovolley_widget_is_present(self) -> None:
+        body, _ = _get_json("/api/state")
+        self.assertIn("eurovolley", body["widgets"])
+
+    def test_eurovolley_normalized_shape(self) -> None:
+        body, _ = _get_json("/api/state")
+        env = body["widgets"]["eurovolley"]
+        self.assertIn(env["status"], ("ok", "stale", "error", "empty"))
+        data = env.get("data") or {}
+        self.assertEqual(data.get("kind"), "eurovolley_schedule")
+        self.assertEqual(data.get("timezone"), "Europe/Warsaw")
+        self.assertEqual({item.get("gender") for item in data.get("competitions", [])}, {"K", "M"})
+        self.assertGreaterEqual(len(data.get("poland_matches", [])), 10)
+
+    def test_eurovolley_sources_are_official_cev(self) -> None:
+        body, _ = _get_json("/api/state")
+        sources = (body["widgets"]["eurovolley"].get("data") or {}).get("official_sources", [])
+        self.assertEqual(len(sources), 2)
+        self.assertTrue(all(str(item.get("url", "")).startswith("https://www-old.cev.eu/") for item in sources))
+
+
 class VoiceConsoleContractTests(unittest.TestCase):
     """GET /api/voice_console must keep voice/utterance/activity/result at
     the top level (NOT collapsed inside a `data` envelope)."""

@@ -116,45 +116,38 @@ body[data-skin="oracle"] {
  * Auto-renders ONLY when:
  *   - the oracle skin is active (body[data-skin="oracle"])
  *   - the server has flagged today as a Poland match day
- *     (body[data-pl-matchday="1"]), computed in app/server.py against
- *     volleyball.men + volleyball.women for the Europe/Warsaw local window.
- * The flag uses fixed pseudo-elements at z-index 0; .layout and .ticker
- * sit above it at z-index 1 so the dashboard content remains readable.
+ *     (body[data-pl-matchday="1"]), computed from every registered match feed.
+ * Paint the flag on the body and make cards translucent so the colors are
+ * visible through the dense kiosk grid. No divider: the Polish flag has two
+ * colors, white and red.
  */
 body[data-skin="oracle"][data-pl-matchday="1"] {
-  background: transparent;
+  background: linear-gradient(to bottom, #ffffff 0% 50%, #dc1414 50% 100%) !important;
+  background-attachment: fixed !important;
   position: relative;
 }
 
-body[data-skin="oracle"][data-pl-matchday="1"]::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  background: linear-gradient(
-    to bottom,
-    #ffffff 0% 50%,
-    #dc1414 50% 100%
-  );
-}
-
+body[data-skin="oracle"][data-pl-matchday="1"]::before,
 body[data-skin="oracle"][data-pl-matchday="1"]::after {
-  content: "";
-  position: fixed;
-  left: 0;
-  right: 0;
-  top: 50%;
-  height: 1px;
-  z-index: 0;
-  pointer-events: none;
-  background: rgba(0, 0, 0, 0.18);
+  display: none !important;
+  content: none !important;
 }
 
 body[data-skin="oracle"][data-pl-matchday="1"] .layout,
 body[data-skin="oracle"][data-pl-matchday="1"] .ticker {
   position: relative;
   z-index: 1;
+}
+
+body[data-skin="oracle"][data-pl-matchday="1"] .card {
+  background: rgba(10, 14, 22, 0.55) !important;
+  border-color: rgba(255, 255, 255, 0.18) !important;
+}
+
+body[data-skin="oracle"][data-pl-matchday="1"] .card--slideshow,
+body[data-skin="oracle"][data-pl-matchday="1"] .card--video,
+body[data-skin="oracle"][data-pl-matchday="1"] .card--alerts {
+  background: rgba(10, 14, 22, 0.65) !important;
 }
 
 /* ========== PANEL CHROME — additive .ornate-panel wrapper ==========
