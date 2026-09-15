@@ -82,13 +82,13 @@ PEDRO_AUTOSTART_VOICE_KWS_FILE="${PEDRO_AUTOSTART_VOICE_KWS_FILE:-$PEDRO_XDG_AUT
 
 # Photos slideshow tuning (scripts/refresh-photos-slideshow.py)
 # Override the 30 min default; user wants fresh photos on a 5 min cycle
-# so newly added Google Photos items show up quickly on the kiosk.
+# so newly added Google Photos items show up quickly on the kiosk. A positive
+# value is an explicit operator cap; 0 means all discoverable album photos.
 PEDRO_GOOGLE_PHOTOS_REFRESH_SECONDS="${PEDRO_GOOGLE_PHOTOS_REFRESH_SECONDS:-300}"
 export PEDRO_GOOGLE_PHOTOS_REFRESH_SECONDS
-# User's shared album has been growing — 191 items on 2026-06-16,
-# ~246 by mid-day. Default cap (80) silently dropped most of them.
-# Raise to 300 for headroom; user can keep adding without re-tuning.
-PEDRO_GOOGLE_PHOTOS_MAX_IMAGES="${PEDRO_GOOGLE_PHOTOS_MAX_IMAGES:-300}"
+# Do not silently discard the 301st item as the album grows. Set a positive
+# value only when an operator deliberately wants a resource cap.
+PEDRO_GOOGLE_PHOTOS_MAX_IMAGES="${PEDRO_GOOGLE_PHOTOS_MAX_IMAGES:-0}"
 export PEDRO_GOOGLE_PHOTOS_MAX_IMAGES
 # User wants 3 s/photo so the full album cycles quickly while the
 # state-refresher remains at its slower dashboard cadence. Default in the

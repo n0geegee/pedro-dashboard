@@ -44,7 +44,10 @@ DEFAULT_ALBUM_URL = "https://photos.google.com/share/AF1QipMdT3_Rs-wS-anKMch21iI
 DEFAULT_ALBUM_TITLE = "pedro slideshow"
 DEFAULT_REFRESH_SECONDS = 1800
 DEFAULT_SLIDE_SECONDS = 3
-DEFAULT_MAX_IMAGES = 80
+# A positive value is an optional operator cap. Zero means "all photo URLs
+# discoverable in the album page"; the production default must not silently
+# drop the 301st photo just because an old album happened to have 300 items.
+DEFAULT_MAX_IMAGES = 0
 USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) PedroDashboard/0.1"
 
 
@@ -71,7 +74,7 @@ def load_media_baseline(path: Path) -> dict[str, Any]:
     return envelope(WIDGET, "ok", 120, {"transmission": {}, "slideshow": {}, "tbd": {}})
 
 
-def extract_photo_urls(html: str, max_images: int) -> list[str]:
+def extract_photo_urls(html: str, max_images: int | None = None) -> list[str]:
     raw = re.findall(r"https://lh3\.googleusercontent\.com/[^\\\"'<> )]+", html)
     urls: list[str] = []
     seen: set[str] = set()
@@ -94,15 +97,27 @@ def extract_photo_urls(html: str, max_images: int) -> list[str]:
             continue
         seen.add(u)
         urls.append(u)
-        if len(urls) >= max_images:
+        if max_images is not None and max_images > 0 and len(urls) >= max_images:
             break
     return urls
 
 
-def fetch_album_urls(album_url: str, max_images: int) -> list[str]:
+def fetch_album_urls(album_url: str, max_images: int | None = None) -> list[str]:
     req = urllib.request.Request(album_url, headers={"User-Agent": USER_AGENT, "Accept": "text/html"})
     with urllib.request.urlopen(req, timeout=30) as resp:
-        html = resp.read(2_500_000).decode("utf-8", "ignore")
+        # Read the complete page. The old 2.5 MB read limit could silently
+        # truncate a growing album's HTML and turn a partial feed into a
+        # smaller-but-valid manifest. If the server advertises a length,
+        # verify that the complete response arrived before parsing it.
+        declared_length = resp.headers.get("Content-Length")
+        body = resp.read()
+    if declared_length:
+        try:
+            if len(body) != int(declared_length):
+                raise RuntimeError("album_html_truncated")
+        except ValueError:
+            pass
+    html = body.decode("utf-8", "ignore")
     return extract_photo_urls(html, max_images=max_images)
 
 

@@ -190,6 +190,49 @@ with media_state_lock(state_dir):
             ],
         )
 
+    def test_photo_url_extraction_is_unbounded_by_default(self) -> None:
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location("refresh_photos_limit", SCRIPTS / "refresh-photos-slideshow.py")
+        self.assertIsNotNone(spec)
+        self.assertIsNotNone(spec.loader)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        html = " ".join(
+            f"https://lh3.googleusercontent.com/pw/album-photo-{index}=s0"
+            for index in range(301)
+        )
+
+        self.assertEqual(len(module.extract_photo_urls(html)), 301)
+        self.assertEqual(len(module.extract_photo_urls(html, max_images=0)), 301)
+        self.assertEqual(len(module.extract_photo_urls(html, max_images=300)), 300)
+
+    def test_album_fetch_rejects_truncated_declared_response(self) -> None:
+        import importlib.util
+        from unittest.mock import patch
+
+        spec = importlib.util.spec_from_file_location("refresh_photos_http", SCRIPTS / "refresh-photos-slideshow.py")
+        self.assertIsNotNone(spec)
+        self.assertIsNotNone(spec.loader)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        class FakeResponse:
+            headers = {"Content-Length": "20"}
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc_value, traceback):
+                return False
+
+            def read(self):
+                return b"short"
+
+        with patch.object(module.urllib.request, "urlopen", return_value=FakeResponse()):
+            with self.assertRaisesRegex(RuntimeError, "album_html_truncated"):
+                module.fetch_album_urls("https://example.test/album")
+
     def test_orientation_changes_only_incoming_layer_and_policy_is_shared(self) -> None:
         js = (STATIC / "app.js").read_text(encoding="utf-8")
         css = (STATIC / "styles.css").read_text(encoding="utf-8")
