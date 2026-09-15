@@ -270,6 +270,45 @@ with media_state_lock(state_dir):
             self.assertEqual(len(captured["bytes"]), len(payload))
             self.assertEqual(destination.read_bytes(), b"normalized-webp")
 
+    def test_corrupt_legacy_cache_is_quarantined_and_redownloaded(self) -> None:
+        import importlib.util
+        from unittest.mock import patch
+
+        spec = importlib.util.spec_from_file_location("refresh_photos_recovery", SCRIPTS / "refresh-photos-slideshow.py")
+        self.assertIsNotNone(spec)
+        self.assertIsNotNone(spec.loader)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        old_payload = b"old-corrupt-cache" * 2_000
+        new_payload = b"new-complete-source" * 2_000
+
+        class FakeResponse:
+            headers = {"Content-Length": str(len(new_payload))}
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc_value, traceback):
+                return False
+
+            def read(self):
+                return new_payload
+
+        def fake_encode(source, destination):
+            destination.write_bytes(b"normalized-webp")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            destination = Path(tmp) / "photo-corrupt.webp"
+            destination.write_bytes(old_payload)
+            with patch.object(module, "_normalize_existing_cache", side_effect=RuntimeError("corrupt")), patch.object(
+                module.urllib.request, "urlopen", return_value=FakeResponse()
+            ), patch.object(module, "encode_webp", side_effect=fake_encode):
+                self.assertTrue(module.download_if_needed("https://example.test/retry.jpg", destination))
+            self.assertEqual(destination.read_bytes(), b"normalized-webp")
+            quarantined = list(Path(tmp).glob("photo-corrupt.webp.legacy-*"))
+            self.assertEqual(len(quarantined), 1)
+            self.assertEqual(quarantined[0].read_bytes(), old_payload)
+
     def test_orientation_changes_only_incoming_layer_and_policy_is_shared(self) -> None:
         js = (STATIC / "app.js").read_text(encoding="utf-8")
         css = (STATIC / "styles.css").read_text(encoding="utf-8")

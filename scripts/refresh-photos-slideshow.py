@@ -199,8 +199,18 @@ def download_if_needed(url: str, dest: Path) -> bool:
     if dest.exists() and dest.stat().st_size > 10_000:
         if _is_normalized_webp(dest):
             return False
-        _normalize_existing_cache(dest)
-        return True
+        try:
+            _normalize_existing_cache(dest)
+            return True
+        except Exception:
+            # A legacy file may itself be truncated/corrupt (for example the
+            # old 8 MB downloader left exactly 8,000,000 bytes behind). Keep
+            # it for forensics, but do not retry the same doomed transcode on
+            # every refresh: quarantine it and fetch a complete source below.
+            quarantined = dest.with_name(
+                f"{dest.name}.legacy-{os.getpid()}-{int(time.time())}"
+            )
+            dest.replace(quarantined)
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": "image/*"})
     raw_tmp = dest.with_suffix(dest.suffix + ".src")
     try:
