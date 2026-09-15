@@ -233,6 +233,43 @@ with media_state_lock(state_dir):
             with self.assertRaisesRegex(RuntimeError, "album_html_truncated"):
                 module.fetch_album_urls("https://example.test/album")
 
+    def test_image_download_reads_sources_larger_than_eight_mb(self) -> None:
+        import importlib.util
+        from unittest.mock import patch
+
+        spec = importlib.util.spec_from_file_location("refresh_photos_download", SCRIPTS / "refresh-photos-slideshow.py")
+        self.assertIsNotNone(spec)
+        self.assertIsNotNone(spec.loader)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        payload = b"x" * 8_000_001
+        captured = {}
+
+        class FakeResponse:
+            headers = {"Content-Length": str(len(payload))}
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc_value, traceback):
+                return False
+
+            def read(self):
+                return payload
+
+        def fake_encode(source, destination):
+            captured["bytes"] = source.read_bytes()
+            destination.write_bytes(b"normalized-webp")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            destination = Path(tmp) / "photo-large.webp"
+            with patch.object(module.urllib.request, "urlopen", return_value=FakeResponse()), patch.object(
+                module, "encode_webp", side_effect=fake_encode
+            ):
+                self.assertTrue(module.download_if_needed("https://example.test/large.jpg", destination))
+            self.assertEqual(len(captured["bytes"]), len(payload))
+            self.assertEqual(destination.read_bytes(), b"normalized-webp")
+
     def test_orientation_changes_only_incoming_layer_and_policy_is_shared(self) -> None:
         js = (STATIC / "app.js").read_text(encoding="utf-8")
         css = (STATIC / "styles.css").read_text(encoding="utf-8")

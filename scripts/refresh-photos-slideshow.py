@@ -205,7 +205,13 @@ def download_if_needed(url: str, dest: Path) -> bool:
     raw_tmp = dest.with_suffix(dest.suffix + ".src")
     try:
         with urllib.request.urlopen(req, timeout=45) as resp:
-            data = resp.read(8_000_000)
+            # Read the complete source image. The old 8 MB read limit silently
+            # truncated larger JPEGs (for example an 11 MB phone original),
+            # making a valid new album item fail decoding and disappear from
+            # the manifest. If a length is advertised, reject a short body
+            # rather than caching a corrupt partial image.
+            declared_length = resp.headers.get("Content-Length")
+            data = resp.read()
     except Exception:
         # Clean up partial download.
         if raw_tmp.exists():
@@ -214,6 +220,12 @@ def download_if_needed(url: str, dest: Path) -> bool:
             except Exception:
                 pass
         raise
+    if declared_length:
+        try:
+            if len(data) != int(declared_length):
+                raise RuntimeError("image_download_truncated")
+        except ValueError:
+            pass
     if len(data) < 10_000:
         try:
             raw_tmp.unlink()
