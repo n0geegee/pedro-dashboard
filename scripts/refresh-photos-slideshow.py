@@ -289,29 +289,10 @@ def _measure_image(path: Path) -> dict[str, Any]:
     return {"width": w, "height": h, "orientation": orientation}
 
 
-def preserve_manifest_order(
-    images: list[dict[str, Any]],
-    previous_manifest: dict[str, Any] | None,
-) -> list[dict[str, Any]]:
-    """Keep the existing queue order and append newly discovered images."""
-    if not previous_manifest or not previous_manifest.get("images"):
-        return images
-    by_url: dict[str, dict[str, Any]] = {}
-    fresh_order: list[str] = []
-    for item in images:
-        public_url = item.get("public_url")
-        if not public_url or public_url in by_url:
-            continue
-        by_url[public_url] = item
-        fresh_order.append(public_url)
-
-    ordered: list[dict[str, Any]] = []
-    for item in previous_manifest.get("images", []):
-        public_url = item.get("public_url") if isinstance(item, dict) else None
-        if public_url in by_url:
-            ordered.append(by_url.pop(public_url))
-    ordered.extend(by_url[url] for url in fresh_order if url in by_url)
-    return ordered
+def shuffle_manifest_order(images: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Randomize one complete queue without affecting the hot rotator."""
+    random.SystemRandom().shuffle(images)
+    return images
 
 
 def cache_album(album_url: str, cache_dir: Path, manifest_path: Path, max_images: int) -> dict[str, Any]:
@@ -351,14 +332,11 @@ def cache_album(album_url: str, cache_dir: Path, manifest_path: Path, max_images
     if not images:
         raise RuntimeError("no_images_cached")
 
-    # Randomize only the first queue. Subsequent refreshes preserve the
-    # existing order and append new images, so a manifest rebuild cannot turn
-    # the current numeric cursor into an apparent skip.
-    previous_manifest = read_json(manifest_path)
-    if previous_manifest and previous_manifest.get("images"):
-        images = preserve_manifest_order(images, previous_manifest)
-    else:
-        random.SystemRandom().shuffle(images)
+    # Randomize every full manifest refresh, but never on the hot rotation
+    # path (`--no-manifest-refresh`). The previous public URL is passed to
+    # `pick_image`, so a queue rebuild continues after the visible photo
+    # instead of trusting a stale numeric cursor.
+    images = shuffle_manifest_order(images)
 
     manifest = {
         "album_url": album_url,
@@ -366,7 +344,7 @@ def cache_album(album_url: str, cache_dir: Path, manifest_path: Path, max_images
         "updated_at": now_iso(),
         "count": len(images),
         "downloaded": downloaded,
-        "order": "stable_previous_order_append_new",
+        "order": "random_shuffle_no_repeats_until_wrap",
         "images": images,
     }
     atomic_write(manifest_path, manifest)

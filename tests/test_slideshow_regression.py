@@ -163,32 +163,30 @@ with media_state_lock(state_dir):
         self.assertEqual(current, 3)
         self.assertEqual(image["public_url"], "/static/cache/photos/c.webp")
 
-    def test_manifest_refresh_preserves_existing_queue_order(self) -> None:
+    def test_manifest_refresh_randomizes_complete_queue(self) -> None:
         import importlib.util
+        from unittest.mock import patch
 
         spec = importlib.util.spec_from_file_location("refresh_photos_order", SCRIPTS / "refresh-photos-slideshow.py")
         self.assertIsNotNone(spec)
         self.assertIsNotNone(spec.loader)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
-        previous = {
-            "images": [
-                {"public_url": "/static/cache/photos/b.webp"},
-                {"public_url": "/static/cache/photos/a.webp"},
-            ]
-        }
-        fresh = [
+        images = [
             {"public_url": "/static/cache/photos/a.webp"},
-            {"public_url": "/static/cache/photos/c.webp"},
             {"public_url": "/static/cache/photos/b.webp"},
+            {"public_url": "/static/cache/photos/c.webp"},
         ]
-        ordered = module.preserve_manifest_order(fresh, previous)
+        with patch.object(module.random, "SystemRandom") as random_cls:
+            random_cls.return_value.shuffle.side_effect = lambda values: values.reverse()
+            ordered = module.shuffle_manifest_order(images)
+            random_cls.assert_called_once_with()
         self.assertEqual(
             [item["public_url"] for item in ordered],
             [
+                "/static/cache/photos/c.webp",
                 "/static/cache/photos/b.webp",
                 "/static/cache/photos/a.webp",
-                "/static/cache/photos/c.webp",
             ],
         )
 
