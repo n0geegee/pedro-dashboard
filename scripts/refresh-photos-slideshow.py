@@ -369,11 +369,8 @@ def cache_album(album_url: str, cache_dir: Path, manifest_path: Path, max_images
     if not images:
         raise RuntimeError("no_images_cached")
 
-    # Randomize every full manifest refresh, but never on the hot rotation
-    # path (`--no-manifest-refresh`). The previous public URL is passed to
-    # `pick_image`, so a queue rebuild continues after the visible photo
-    # instead of trusting a stale numeric cursor.
-    images = shuffle_manifest_order(images)
+    # This is album inventory, not the playback queue. The durable queue in
+    # media.json is shuffled only when pick_cycle_image starts a new round.
 
     manifest = {
         "album_url": album_url,
@@ -381,7 +378,7 @@ def cache_album(album_url: str, cache_dir: Path, manifest_path: Path, max_images
         "updated_at": now_iso(),
         "count": len(images),
         "downloaded": downloaded,
-        "order": "random_shuffle_no_repeats_until_wrap",
+        "order": "album_inventory_playback_cycle_in_media",
         "images": images,
     }
     atomic_write(manifest_path, manifest)
@@ -448,6 +445,68 @@ def pick_image(
     return idx + 1, images[idx]
 
 
+def pick_cycle_image(
+    manifest: dict[str, Any],
+    saved: dict[str, Any] | None,
+    last_public_url: str | None,
+) -> tuple[int, dict[str, Any], dict[str, Any]]:
+    """Consume a durable shuffled round, independent of manifest order.
+
+    New album entries join the next round; deleted entries are skipped. State
+    is returned, not mutated, so it can commit atomically with the visible slide
+    inside media.json. The server projects only public envelope fields.
+    """
+    by_url = {
+        item["public_url"]: item
+        for item in manifest.get("images", [])
+        if isinstance(item, dict) and isinstance(item.get("public_url"), str)
+        and item["public_url"]
+    }
+    if not by_url:
+        raise RuntimeError("manifest_has_no_images")
+    album = hashlib.sha256(str(manifest.get("album_url", "")).encode()).hexdigest()
+    queue: list[str] = []
+    position = 0
+    round_number = 0
+    if saved is not None:
+        if not isinstance(saved, dict) or saved.get("schema_version") != 1:
+            raise RuntimeError("invalid_photo_cycle")
+        old_queue = saved.get("queue")
+        old_position = saved.get("position")
+        old_round = saved.get("round")
+        if (not isinstance(old_queue, list) or not old_queue
+                or not all(isinstance(url, str) and url for url in old_queue)
+                or len(set(old_queue)) != len(old_queue)
+                or type(old_position) is not int or not 0 <= old_position <= len(old_queue)
+                or type(old_round) is not int or old_round < 1):
+            raise RuntimeError("invalid_photo_cycle")
+        if saved.get("album") == album:
+            # Count only surviving entries from the already-consumed prefix.
+            position = sum(url in by_url for url in old_queue[:old_position])
+            queue = [url for url in old_queue if url in by_url]
+            round_number = old_round
+    if position >= len(queue):
+        shuffled = shuffle_manifest_order(list(by_url.values()))
+        queue = [item["public_url"] for item in shuffled]
+        # No adjacent repeat across rounds (except a one-photo album).
+        if len(queue) > 1 and queue[0] == last_public_url:
+            queue[0], queue[1] = queue[1], queue[0]
+        position = 0
+        round_number += 1
+    current, image = pick_image(
+        {"images": [by_url[url] for url in queue]},
+        slide_seconds=1,
+        last_index=position - 1 if position else len(queue) - 1,
+    )
+    return current, image, {
+        "schema_version": 1,
+        "album": album,
+        "round": round_number,
+        "queue": queue,
+        "position": current,
+    }
+
+
 def _refresh_manifest_only() -> int:
     """Refresh only the album manifest; never touch media.json."""
     state_dir = resolve_state_dir(None)
@@ -509,19 +568,14 @@ def _main_locked(*, allow_manifest_refresh: bool = True) -> int:
                 max_images=max_images,
                 allow_refresh=False,
             )
-        # Read previous current from media.json so pick_image can advance by
-        # exactly one slot instead of jumping to a wall-clock-derived index.
-        # `current` is 1-based in the JSON; convert to 0-based for the math.
-        prev_current = ((data.get("slideshow") or {}).get("current") or 0)
+        # Playback order and position commit in the same JSON transaction as
+        # the slide. Inventory refreshes cannot reset an in-progress round.
         prev_image_url = ((data.get("slideshow") or {}).get("image_url") or None)
-        last_index = (prev_current - 1) if prev_current > 0 else None
-        current, image = pick_image(
-            manifest,
-            slide_seconds=slide_seconds,
-            last_index=last_index,
-            last_public_url=prev_image_url,
+        current, image, cycle = pick_cycle_image(
+            manifest, media.get("_photos_cycle"), prev_image_url,
         )
-        total = int(manifest.get("count") or len(manifest.get("images") or []))
+        total = len(cycle["queue"])
+        media["_photos_cycle"] = cycle
         data["slideshow"] = {
             "album": album_title,
             "total": total,
@@ -543,24 +597,15 @@ def _main_locked(*, allow_manifest_refresh: bool = True) -> int:
         print(f"wrote {out_path} (photos ok, current={current}, total={total}, image={image['public_url']})")
         return 0
     except Exception as exc:
-        data["slideshow"] = {
-            "album": album_title,
-            "total": 0,
-            "current": 0,
-            "provider": "google_photos_shared_album_cache",
-            "source_url": album_url,
-            "note": "Nie udało się odświeżyć albumu Google Photos",
-        }
-        media["status"] = "ok"
-        media["updated_at"] = now_iso()
-        media["error"] = None
-        atomic_write(out_path, media)
+        # Do not commit a second, partially advanced state on failure. The
+        # previous slide and its queue position stay together on disk; retry
+        # will attempt the same unconsumed entry rather than skipping it.
         log_dir = root / "app" / "logs"
         log_dir.mkdir(parents=True, exist_ok=True)
         with (log_dir / "refresh-photos-slideshow.err.log").open("a", encoding="utf-8") as f:
             f.write(f"[{now_iso()}] PHOTOS_SLIDESHOW_FAILED: {type(exc).__name__}: {exc}\n")
-        print(f"wrote {out_path} (photos unavailable); see app/logs/refresh-photos-slideshow.err.log")
-        return 0
+        print("photos advance failed; retained previous slide and cycle")
+        return 1
 
 
 def main() -> int:
