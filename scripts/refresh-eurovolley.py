@@ -16,7 +16,12 @@ from typing import Any, Dict, List
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-from eurovolley_schedule import SOURCES, build_data, parse_cev_final_page
+from eurovolley_schedule import (
+    SOURCES,
+    build_data,
+    parse_cev_competition_view,
+    parse_cev_final_page,
+)
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 STATE_PATH = PROJECT_ROOT / "app" / "state" / "eurovolley.json"
@@ -111,10 +116,15 @@ def main() -> int:
     try:
         dynamic: List[Dict[str, Any]] = []
         for gender in ("K", "M"):
-            html = fetch(SOURCES[gender]["official_url"])
-            rows = parse_cev_final_page(html, gender, retrieved_at, detail_fetch=fetch)
+            html = fetch(SOURCES[gender]["results_url"])
+            rows = parse_cev_competition_view(html, gender, retrieved_at)
             if not rows:
-                raise RuntimeError(f"official CEV {gender} page yielded no concrete match cards")
+                # Keep the old current-phase page as a narrow availability
+                # fallback; it is not sufficient for historical pool scores.
+                html = fetch(SOURCES[gender]["official_url"])
+                rows = parse_cev_final_page(html, gender, retrieved_at, detail_fetch=fetch)
+            if not rows:
+                raise RuntimeError(f"official CEV {gender} results page yielded no concrete match cards")
             dynamic.extend(rows)
         data = build_data(dynamic, retrieved_at, current)
         payload = {

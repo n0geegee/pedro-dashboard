@@ -11,6 +11,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 from eurovolley_schedule import (  # noqa: E402
     build_data,
+    parse_cev_competition_view,
     parse_cev_final_page,
     predict_match,
     static_poland_matches,
@@ -32,6 +33,20 @@ def card(group: int, match: int, code: str, home: str, away: str, date: str, sta
         span("LB_FMN", code), span("LB_Home", home), span("LB_Guest", away),
         span("LB_Data", date), span("Label1", start), span("Label3", hs),
         span("LB_VintiOspiti", ass),
+    ])
+
+
+def competition_view_card(match: int, code: str, home: str, away: str, date_time: str, hs: str = "", ass: str = "") -> str:
+    prefix = (
+        "ctl00_Content_Left_12863_userControl_RADLIST_Legs_ctrl14_"
+        f"RADLIST_Matches_ctrl{match}"
+    )
+    def span(suffix: str, value: str) -> str:
+        return f'<span id="{prefix}_{suffix}">{value}</span>'
+    return "".join([
+        span("LB_FederationMatchNumber", code), span("Label2", home), span("Label4", away),
+        span("LB_SetCasa", hs), span("LB_SetOspiti", ass),
+        span("LB_DataOra", date_time), span("LB_Palasport", "Arena 8888 SOFIA"),
     ])
 
 
@@ -93,6 +108,23 @@ class EuroVolleyScheduleTests(unittest.TestCase):
         semi = rows[1]
         self.assertEqual(semi["status"], "finished")
         self.assertEqual(semi["score"], "1:3")
+
+    def test_competition_view_parser_reads_group_result_and_warsaw_time(self) -> None:
+        html = competition_view_card(2, "MFB-15", "POLAND", "BULGARIA", "16/09/2026 19:00", "2", "3")
+        html += competition_view_card(3, "MQF-03", "POLAND", "GERMANY", "22/09/2026 19:00", "0", "0")
+        rows = parse_cev_competition_view(html, "M", STAMP)
+        self.assertEqual(len(rows), 2)
+        row = next(item for item in rows if item["official_code"] == "MFB-15")
+        self.assertEqual(row["official_code"], "MFB-15")
+        self.assertEqual(row["phase"], "Faza grupowa")
+        self.assertEqual(row["round"], "Grupa B")
+        self.assertEqual(row["status"], "finished")
+        self.assertEqual(row["score"], "2:3")
+        self.assertEqual(row["source_date"], "2026-09-16")
+        self.assertEqual(row["warsaw_time"], "18:00")
+        upcoming = next(item for item in rows if item["official_code"] == "MQF-03")
+        self.assertEqual(upcoming["status"], "scheduled")
+        self.assertIsNone(upcoming["score"])
 
     def test_final_card_can_resolve_date_from_official_match_page(self) -> None:
         html = card(9, 0, "WFF-01", "POLAND", "SERBIA", "", "")

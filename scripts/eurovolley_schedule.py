@@ -27,6 +27,7 @@ SOURCES: Dict[str, Dict[str, str]] = {
         "id": "eurovolley-2026-women",
         "name": "CEV Trendyol EuroVolley 2026 Women",
         "official_url": "https://www-old.cev.eu/Competition-Area/competition.aspx?ID=1573&PID=2992",
+        "results_url": "https://www-old.cev.eu/Competition-Area/CompetitionView.aspx?ID=1573",
         "calendar_url": "https://webmedia.cev.eu/media/ajxbenea/match-calendars-ev26w.pdf",
         "announcement_url": "https://www.cev.eu/articles/volleyball/cev-eurovolley-2026-full-competition-schedule-now-released/",
     },
@@ -34,6 +35,7 @@ SOURCES: Dict[str, Dict[str, str]] = {
         "id": "eurovolley-2026-men",
         "name": "CEV Enel EuroVolley 2026 Men",
         "official_url": "https://www-old.cev.eu/Competition-Area/competition.aspx?ID=1572&PID=2990",
+        "results_url": "https://www-old.cev.eu/Competition-Area/CompetitionView.aspx?ID=1572",
         "calendar_url": "https://webmedia.cev.eu/media/slmjk2cz/match-calendars-ev26m.pdf",
         "announcement_url": "https://www.cev.eu/articles/volleyball/cev-eurovolley-2026-full-competition-schedule-now-released/",
     },
@@ -547,7 +549,8 @@ def parse_cev_final_page(
         away_score = _field(html, base, "LB_VintiOspiti")
         score = None
         status = "scheduled"
-        if home_score.isdigit() and away_score.isdigit():
+        if (home_score.isdigit() and away_score.isdigit()
+                and not (home_score == "0" and away_score == "0")):
             score = f"{home_score}:{away_score}"
             status = "finished"
         phase, round_name = PHASE_BY_GROUP.get(gender, {}).get(
@@ -565,6 +568,111 @@ def parse_cev_final_page(
                 phase=phase,
                 round_name=round_name,
                 source_url=SOURCES[gender]["official_url"],
+                retrieved_at=retrieved_at,
+                status=status,
+                score=score,
+            )
+        )
+    return matches
+
+
+def _competition_view_phase(source_id: str) -> Tuple[str, str]:
+    """Map a CEV CompetitionView code to the dashboard phase labels."""
+    prefix = _clean_text(source_id).upper().split("-", 1)[0]
+    series = prefix[1:] if len(prefix) > 1 and prefix[0] in {"K", "M", "W"} else prefix
+    if len(series) == 2 and series[0] == "F" and series[1] in "ABCD":
+        return "Faza grupowa", f"Grupa {series[1]}"
+    if series == "EF":
+        return "1/8 finału", "Faza finałowa"
+    if series == "QF":
+        return "Ćwierćfinał", "Faza finałowa"
+    if series == "SF":
+        return "Półfinał", "Faza finałowa"
+    if series == "FF":
+        match_number = _clean_text(source_id).rsplit("-", 1)[-1]
+        return ("Mecz o 3. miejsce" if match_number == "01" else "Finał"), "Faza finałowa"
+    return "Faza finałowa", "Oficjalny terminarz CEV"
+
+
+def _competition_view_venue(venue_text: str, gender: str, source_id: str) -> Dict[str, Optional[str]]:
+    """Resolve the source-local timezone from CEV's venue label."""
+    value = _clean_text(venue_text).upper()
+    venues = (
+        (("SOFIA",), {"city": "Sofia", "country": "Bulgaria", "timezone": "Europe/Sofia"}),
+        (("TAMPERE",), {"city": "Tampere", "country": "Finland", "timezone": "Europe/Helsinki"}),
+        (("CLUJ",), {"city": "Cluj-Napoca", "country": "Romania", "timezone": "Europe/Bucharest"}),
+        (("ISTANBUL",), {"city": "Istanbul", "country": "Türkiye", "timezone": "Europe/Istanbul"}),
+        (("BRNO",), {"city": "Brno", "country": "Czechia", "timezone": "Europe/Prague"}),
+        (("BAKU",), {"city": "Baku", "country": "Azerbaijan", "timezone": "Asia/Baku"}),
+        (("GOTHENBURG",), {"city": "Gothenburg", "country": "Sweden", "timezone": "Europe/Stockholm"}),
+        (("NAPLES", "MODENA", "TURIN", "MILAN", "ITALY"), {"city": "Italy", "country": "Italy", "timezone": "Europe/Rome"}),
+    )
+    for needles, venue in venues:
+        if any(needle in value for needle in needles):
+            return dict(venue)
+    prefix = _clean_text(source_id).upper().split("-", 1)[0]
+    pool = prefix[-1:] if len(prefix) == 3 and prefix[1] == "F" and prefix[2] in "ABCD" else "A"
+    index = "ABCD".find(pool)
+    return dict(VENUES.get(gender, {}).get(index, {"city": None, "country": None, "timezone": "Europe/Warsaw"}))
+
+
+def parse_cev_competition_view(html: str, gender: str, retrieved_at: str) -> List[Dict[str, Any]]:
+    """Parse the official CEV all-matches view, including completed pools.
+
+    ``competition.aspx`` exposes only the current final-phase cards. The
+    linked ``CompetitionView.aspx`` page contains historical pool cards too,
+    using ``LB_FederationMatchNumber``, ``Label2``/``Label4``,
+    ``LB_SetCasa``/``LB_SetOspiti`` and ``LB_DataOra``.
+    """
+    matches: List[Dict[str, Any]] = []
+    code_pattern = re.compile(
+        r"<(?P<tag>span|a)\b[^>]*\bid=[\"'](?P<id>[^\"']*"
+        r"RADLIST_Legs_ctrl(?P<group>\d+)_RADLIST_Matches_ctrl\d+_"
+        r"LB_FederationMatchNumber)[\"'][^>]*>(?P<body>.*?)</(?P=tag)>",
+        re.IGNORECASE | re.DOTALL,
+    )
+    seen: set[str] = set()
+    for card in code_pattern.finditer(html):
+        source_id = _clean_text(card.group("body"))
+        if not source_id or source_id in seen:
+            continue
+        seen.add(source_id)
+        base = card.group("id")[: -len("_LB_FederationMatchNumber")]
+        home = _field(html, base, "Label2")
+        away = _field(html, base, "Label4")
+        date_time = _field(html, base, "LB_DataOra")
+        if _is_placeholder(home) or _is_placeholder(away) or not date_time:
+            continue
+        date_match = re.search(r"(\d{1,2}/\d{1,2}/\d{4})\s+(\d{1,2}:\d{2})", date_time)
+        if not date_match:
+            continue
+        try:
+            source_date = _parse_date(date_match.group(1))
+            source_time = _parse_time(date_match.group(2))
+        except (ValueError, TypeError):
+            continue
+        home_score = _field(html, base, "LB_SetCasa")
+        away_score = _field(html, base, "LB_SetOspiti")
+        score = None
+        status = "scheduled"
+        if (home_score.isdigit() and away_score.isdigit()
+                and not (home_score == "0" and away_score == "0")):
+            score = f"{home_score}:{away_score}"
+            status = "finished"
+        phase, round_name = _competition_view_phase(source_id)
+        venue = _competition_view_venue(_field(html, base, "LB_Palasport"), gender, source_id)
+        matches.append(
+            _match(
+                gender=gender,
+                source_id=source_id,
+                home=home,
+                away=away,
+                source_date=source_date,
+                source_time=source_time,
+                venue=venue,
+                phase=phase,
+                round_name=round_name,
+                source_url=SOURCES[gender]["results_url"],
                 retrieved_at=retrieved_at,
                 status=status,
                 score=score,
@@ -695,7 +803,7 @@ def build_data(dynamic_matches: Iterable[Mapping[str, Any]], retrieved_at: str, 
         "competitions": competitions,
         "prediction_model": dict(PREDICTION_MODEL),
         "official_sources": [
-            {"gender": gender, "name": SOURCES[gender]["name"], "url": SOURCES[gender]["official_url"], "calendar_url": SOURCES[gender]["calendar_url"]}
+            {"gender": gender, "name": SOURCES[gender]["name"], "url": SOURCES[gender]["official_url"], "results_url": SOURCES[gender]["results_url"], "calendar_url": SOURCES[gender]["calendar_url"]}
             for gender in ("K", "M")
         ],
         "freshness": {
