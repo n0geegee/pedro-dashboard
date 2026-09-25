@@ -12,6 +12,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from _probe_common import atomic_write
+
 SKINS = {
     "default": {"label": "Klasyczny", "emoji": "●", "accent": "#4ea1ff"},
     "winter": {"label": "Zima", "emoji": "❄", "accent": "#9bd8ff"},
@@ -29,12 +31,6 @@ OUT_PATH = STATE_DIR / "skin.json"
 
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
-
-
-def atomic_write(path: Path, payload: dict[str, Any]) -> None:
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    tmp.replace(path)
 
 
 def season_for_month(month: int) -> str:

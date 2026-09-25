@@ -25,6 +25,8 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+from _probe_common import atomic_write as _atomic_write
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 APP_DIR = PROJECT_ROOT / "app"
 DEFAULT_STATE_DIR = APP_DIR / "state"
@@ -52,21 +54,6 @@ def _is_stale(updated_at: object, ttl_seconds: object) -> bool:
     if stamp.tzinfo is None:
         stamp = stamp.replace(tzinfo=timezone.utc)
     return (datetime.now(timezone.utc) - stamp.astimezone(timezone.utc)).total_seconds() > ttl
-
-
-def _atomic_write(path: Path, payload: dict) -> None:
-    """Write JSON atomically: temp file in same dir + flush + replace."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    with tmp.open("w", encoding="utf-8") as f:
-        json.dump(payload, f, ensure_ascii=False, indent=2)
-        f.write("\n")
-        f.flush()
-        try:
-            os.fsync(f.fileno())
-        except OSError:
-            pass
-    os.replace(tmp, path)
 
 
 def _envelope(widget: str, status: str, ttl: int, data: dict, error: dict | None = None) -> dict:
@@ -499,9 +486,11 @@ WIDGETS = {
 }
 
 
-def write_all(state_dir: Path) -> list[Path]:
+def write_all(state_dir: Path, skip: frozenset[str] = frozenset()) -> list[Path]:
     written: list[Path] = []
     for name, fn in WIDGETS.items():
+        if name in skip:
+            continue
         path = state_dir / name
         _atomic_write(path, fn())
         written.append(path)
@@ -535,7 +524,13 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--check", action="store_true", help="verify state files exist; exit 1 if any missing")
     parser.add_argument("--out", default=str(DEFAULT_STATE_DIR), help="output state directory")
+    parser.add_argument(
+        "--skip",
+        default="",
+        help="comma-separated state files owned by live probes (e.g. system.json,hermes.json)",
+    )
     args = parser.parse_args(argv)
+    skip = frozenset(n.strip() for n in args.skip.split(",") if n.strip())
 
     state_dir = Path(args.out).resolve()
     if args.check:
@@ -547,7 +542,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     state_dir.mkdir(parents=True, exist_ok=True)
-    written = write_all(state_dir)
+    written = write_all(state_dir, skip)
     print(f"wrote {len(written)} mock state files to {state_dir}")
     for p in written:
         print(f"  - {p.name}")
