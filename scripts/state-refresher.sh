@@ -1,11 +1,17 @@
 #!/usr/bin/env bash
 # Pedro Dashboard — no-systemd periodic state refresher.
 #
+# Lifecycle wrapper around scripts/pedro_refresher.py (one long-lived
+# scheduler; per-probe cadences and timeouts are defined there).
+#
 # Usage:
 #   scripts/state-refresher.sh --start
 #   scripts/state-refresher.sh --stop
 #   scripts/state-refresher.sh --status
-#   scripts/state-refresher.sh --loop --interval 20
+#   scripts/state-refresher.sh --loop --interval 20   # foreground
+#
+# --interval is the cadence of the fast local probes (system, hermes, ...);
+# network probes (weather, calendar, VNL) run on their own slower cadence.
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -14,6 +20,11 @@ source "$SCRIPT_DIR/_lifecycle_common.sh"
 
 PEDRO_STATE_REFRESH_PID_FILE="${PEDRO_STATE_REFRESH_PID_FILE:-$PEDRO_RUN_DIR/state-refresher.pid}"
 PEDRO_STATE_REFRESH_LOG_FILE="${PEDRO_STATE_REFRESH_LOG_FILE:-$PEDRO_LOG_DIR/state-refresher.log}"
+PEDRO_STATE_REFRESH_STATUS_FILE="${PEDRO_STATE_REFRESH_STATUS_FILE:-$PEDRO_RUN_DIR/state-refresher.status.json}"
+PY_BIN="${PEDRO_SERVER_CMD:-python3}"
+if ! command -v "$PY_BIN" >/dev/null 2>&1; then
+  PY_BIN=/usr/bin/python3
+fi
 INTERVAL="${PEDRO_STATE_REFRESH_INTERVAL:-20}"
 ACTION="start"
 
@@ -25,7 +36,7 @@ while [[ $# -gt 0 ]]; do
     --loop) ACTION="loop"; shift ;;
     --interval) INTERVAL="$2"; shift 2 ;;
     --help|-h)
-      sed -n '2,16p' "$0"
+      sed -n '2,20p' "$0"
       exit 0
       ;;
     *) echo "unknown arg: $1" >&2; exit 64 ;;
@@ -37,7 +48,14 @@ pedro_ensure_dirs
 is_ours() {
   local pid="${1:-}"
   [[ "$pid" =~ ^[0-9]+$ ]] || { echo 0; return 0; }
-  [[ "$(pedro_pid_matches_all "$pid" "state-refresher.sh" "--loop")" == "1" ]] && echo 1 || echo 0
+  if [[ "$(pedro_pid_matches_all "$pid" "pedro_refresher.py")" == "1" ]]; then
+    echo 1
+  # Pre-scheduler bash loop, so --stop still reaches it after an upgrade.
+  elif [[ "$(pedro_pid_matches_all "$pid" "state-refresher.sh" "--loop")" == "1" ]]; then
+    echo 1
+  else
+    echo 0
+  fi
 }
 
 pid=""
@@ -48,7 +66,16 @@ fi
 case "$ACTION" in
   status)
     if [[ -n "$pid" ]] && [[ "$(is_ours "$pid")" == "1" ]]; then
-      echo "state refresher running: pid=$pid interval=${INTERVAL}s log=$PEDRO_STATE_REFRESH_LOG_FILE"
+      echo "state refresher running: pid=$pid log=$PEDRO_STATE_REFRESH_LOG_FILE"
+      if [[ -f "$PEDRO_STATE_REFRESH_STATUS_FILE" ]]; then
+        "$PY_BIN" - "$PEDRO_STATE_REFRESH_STATUS_FILE" <<'PY' || true
+import json, sys
+probes = json.load(open(sys.argv[1]))["probes"]
+for name, p in probes.items():
+    state = "skipped" if p["skipped"] else ("FAILING x%d" % p["consecutive_failures"] if p["consecutive_failures"] else "ok")
+    print("  %-30s every %4ss  last_ok=%s  %s" % (name, int(p["interval_s"]), p["last_ok"] or "-", state))
+PY
+      fi
       exit 0
     fi
     echo "state refresher not running"
@@ -70,17 +97,12 @@ case "$ACTION" in
     exit 0
     ;;
   loop)
+    cd "$PEDRO_PROJECT_ROOT" || exit 70
+    pedro_load_probe_env
     echo $$ > "$PEDRO_STATE_REFRESH_PID_FILE"
-    printf '[%s] state refresher loop started pid=%s interval=%ss\n' "$(pedro_log_ts)" "$$" "$INTERVAL" >> "$PEDRO_STATE_REFRESH_LOG_FILE"
-    while true; do
-      if "$SCRIPT_DIR/refresh-all-state.sh" >> "$PEDRO_STATE_REFRESH_LOG_FILE" 2>&1; then
-        printf '[%s] refresh ok\n' "$(pedro_log_ts)" >> "$PEDRO_STATE_REFRESH_LOG_FILE"
-      else
-        rc=$?
-        printf '[%s] refresh failed rc=%s\n' "$(pedro_log_ts)" "$rc" >> "$PEDRO_STATE_REFRESH_LOG_FILE"
-      fi
-      sleep "$INTERVAL"
-    done
+    # exec keeps the pid, so the pid file stays valid for --stop/--status.
+    exec "$PY_BIN" "$SCRIPT_DIR/pedro_refresher.py" \
+      --base-interval "$INTERVAL" --status-file "$PEDRO_STATE_REFRESH_STATUS_FILE"
     ;;
   start)
     if [[ -n "$pid" ]] && [[ "$(is_ours "$pid")" == "1" ]]; then

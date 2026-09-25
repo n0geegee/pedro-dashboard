@@ -9,10 +9,11 @@
 # not "image index = (time / N) mod total" which would skip 3-4 images
 # per refresh on the default 20s state-refresher cadence.
 #
-# Why not just shorten the state-refresher interval? The state refresher
-# fans out to many other probes (system, hermes, weather, route, calendar,
-# volleyball, polsat) and 20s is the right cadence for those. A separate
-# fast loop for photos keeps the cost low and the rotation snappy.
+# LEGACY since v1.5: scripts/pedro_refresher.py (state-refresher.sh) now
+# advances the slideshow itself at slide-second cadence and serialises it
+# with the polsat probe (both write media.json). This loop is no longer
+# needed; while it runs, the refresher leaves the photos probe to it.
+# Stop it once with `scripts/photos-rotator.sh --stop`.
 #
 # Usage:
 #   scripts/photos-rotator.sh --start        # daemonise

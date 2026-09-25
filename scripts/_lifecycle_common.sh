@@ -107,6 +107,22 @@ pedro_log() {
   printf '[%s] %s\n' "$(pedro_log_ts)" "$msg" >> "$PEDRO_WATCHDOG_LOG_FILE" 2>/dev/null || true
 }
 
+pedro_load_probe_env() {
+  # Environment for the state probes (scripts/pedro_refresher.py). The
+  # refresher often starts from SSH/cron without DISPLAY; the kiosk is the
+  # built-in screen on :0, so system.json can still check display reachability.
+  export DISPLAY="${DISPLAY:-:0}"
+  # Local Hermes/Pedro credentials (e.g. GOOGLE_MAPS_API_KEY for the route
+  # probe), loaded without printing values.
+  if [[ -f "$HOME/.hermes/.env" ]]; then
+    set -a
+    # shellcheck disable=SC1090
+    source "$HOME/.hermes/.env"
+    set +a
+  fi
+  export PEDRO_RUN_DIR PEDRO_VOICE_PY_BIN
+}
+
 pedro_ensure_dirs() {
   mkdir -p "$PEDRO_LOG_DIR" "$PEDRO_RUN_DIR" "$PEDRO_CHROME_PROFILE_DIR" 2>/dev/null || true
 }

@@ -25,6 +25,8 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+from _probe_common import atomic_write as _atomic_write
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 APP_DIR = PROJECT_ROOT / "app"
 DEFAULT_STATE_DIR = APP_DIR / "state"
@@ -52,21 +54,6 @@ def _is_stale(updated_at: object, ttl_seconds: object) -> bool:
     if stamp.tzinfo is None:
         stamp = stamp.replace(tzinfo=timezone.utc)
     return (datetime.now(timezone.utc) - stamp.astimezone(timezone.utc)).total_seconds() > ttl
-
-
-def _atomic_write(path: Path, payload: dict) -> None:
-    """Write JSON atomically: temp file in same dir + flush + replace."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    with tmp.open("w", encoding="utf-8") as f:
-        json.dump(payload, f, ensure_ascii=False, indent=2)
-        f.write("\n")
-        f.flush()
-        try:
-            os.fsync(f.fileno())
-        except OSError:
-            pass
-    os.replace(tmp, path)
 
 
 def _envelope(widget: str, status: str, ttl: int, data: dict, error: dict | None = None) -> dict:
