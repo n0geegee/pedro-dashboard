@@ -40,9 +40,48 @@ fi
 
 status=0
 
+# Per-probe wall-clock cap. A hung probe (DNS stall, stuck Google API call)
+# must not freeze the whole refresh loop and turn every widget stale.
+PROBE_TIMEOUT="${PEDRO_PROBE_TIMEOUT:-60}"
+PHOTOS_PROBE_TIMEOUT="${PEDRO_PHOTOS_PROBE_TIMEOUT:-600}"
+
+# Minimum seconds between runs of network probes whose sources change slowly.
+# Freshness is judged by the mtime of the probe's output file, so a probe
+# that failed without writing is simply retried on the next cycle. 0 = every
+# cycle. All values stay well below each widget's ttl_seconds.
+declare -A PROBE_OUT=(
+  [refresh-weather-status.py]=weather.json
+  [refresh-kamila-calendar.py]=calendar.json
+  [refresh-vnl-volleyball.py]=volleyball.json
+)
+declare -A PROBE_MIN_AGE=(
+  [refresh-weather-status.py]="${PEDRO_WEATHER_MIN_AGE:-300}"
+  [refresh-kamila-calendar.py]="${PEDRO_CALENDAR_MIN_AGE:-120}"
+  [refresh-vnl-volleyball.py]="${PEDRO_VNL_MIN_AGE:-300}"
+)
+
+# True when the probe's output is younger than its minimum refresh age.
+# Error envelopes never count as fresh, so failures keep retrying each cycle.
+probe_is_fresh() {
+  local probe="$1" out min_age path mtime
+  out="${PROBE_OUT[$probe]:-}"
+  min_age="${PROBE_MIN_AGE[$probe]:-0}"
+  [[ -n "$out" && "$min_age" -gt 0 ]] || return 1
+  path="$PEDRO_PROJECT_ROOT/app/state/$out"
+  mtime="$(stat -c %Y "$path" 2>/dev/null)" || return 1
+  (( $(date +%s) - mtime < min_age )) || return 1
+  ! grep -q '^  "status": "error"' "$path"
+}
+
 # Baseline: keeps not-yet-connected display widgets fresh instead of stale.
+# Widgets that have a live probe are skipped, otherwise every cycle would
+# briefly publish mock data (and keep showing it as "ok" if the probe died).
+mock_skip=()
+[[ -f "$SCRIPT_DIR/refresh-system-status.py" ]] && mock_skip+=(system.json)
+[[ -f "$SCRIPT_DIR/refresh-hermes-status.py" ]] && mock_skip+=(hermes.json)
+[[ -f "$SCRIPT_DIR/refresh-openviking-status.py" ]] && mock_skip+=(openviking.json)
 if [[ -f "$SCRIPT_DIR/write-mock-state.py" ]]; then
-  "$PY_BIN" "$SCRIPT_DIR/write-mock-state.py" >/dev/null || status=$?
+  "$PY_BIN" "$SCRIPT_DIR/write-mock-state.py" --skip "$(IFS=,; echo "${mock_skip[*]}")" >/dev/null || status=$?
 fi
 
 # Live probes: overwrite mock baseline with real operational/user state.
@@ -66,11 +105,23 @@ for probe in refresh-system-status.py refresh-hermes-status.py refresh-openvikin
     if [[ "$probe" == "refresh-photos-slideshow.py" ]] && [[ "$photos_owned" == "1" ]]; then
       continue
     fi
+    if probe_is_fresh "$probe"; then
+      continue
+    fi
     probe_py="$PY_BIN"
     if [[ "$probe" == "refresh-kamila-calendar.py" ]]; then
       probe_py="$HERMES_PY_BIN"
     fi
-    "$probe_py" "$SCRIPT_DIR/$probe" >/dev/null || status=$?
+    probe_timeout="$PROBE_TIMEOUT"
+    if [[ "$probe" == "refresh-photos-slideshow.py" ]]; then
+      probe_timeout="$PHOTOS_PROBE_TIMEOUT"
+    fi
+    rc=0
+    timeout -k 5 "$probe_timeout" "$probe_py" "$SCRIPT_DIR/$probe" >/dev/null || rc=$?
+    if [[ "$rc" == "124" || "$rc" == "137" ]]; then
+      printf '[%s] probe %s killed after %ss timeout\n' "$(pedro_log_ts)" "$probe" "$probe_timeout" >&2
+    fi
+    [[ "$rc" == "0" ]] || status=$rc
   fi
 done
 

@@ -791,20 +791,33 @@
 
   // ---- loop -------------------------------------------------------------
 
+  // Abort a request that outlives one poll period so a stalled server can't
+  // pile up hanging connections in a kiosk tab that is never reloaded.
   async function safeFetch(url) {
+    var ctrl = typeof AbortController === "function" ? new AbortController() : null;
+    var timer = ctrl ? setTimeout(function () { ctrl.abort(); }, REFRESH_MS - 500) : null;
     try {
-      var r = await fetch(url, { cache: "no-store" });
+      var r = await fetch(url, { cache: "no-store", signal: ctrl ? ctrl.signal : undefined });
       if (!r.ok) throw new Error("HTTP " + r.status);
       return await r.json();
     } catch (e) {
       console.warn("fetch failed:", url, e);
       return null;
+    } finally {
+      if (timer) clearTimeout(timer);
     }
   }
 
+  var loopInFlight = false;
   async function loop() {
-    var state = await safeFetch(STATE_URL);
-    if (state) applyState(state);
+    if (loopInFlight) return;
+    loopInFlight = true;
+    try {
+      var state = await safeFetch(STATE_URL);
+      if (state) applyState(state);
+    } finally {
+      loopInFlight = false;
+    }
   }
 
 
