@@ -34,6 +34,16 @@ done
 
 pedro_ensure_dirs
 
+sync_photo_rotator() {
+  # The operator switch owns the desired state; this loop owns recovery after
+  # a crash or reboot.  The command is read-only with respect to the control
+  # file and idempotently starts/stops only our photos rotator.
+  if [[ -x "$SCRIPT_DIR/pedro-display-switch.py" ]]; then
+    "$SCRIPT_DIR/pedro-display-switch.py" sync \
+      >> "$PEDRO_STATE_REFRESH_LOG_FILE" 2>&1 || true
+  fi
+}
+
 is_ours() {
   local pid="${1:-}"
   [[ "$pid" =~ ^[0-9]+$ ]] || { echo 0; return 0; }
@@ -73,6 +83,7 @@ case "$ACTION" in
     echo $$ > "$PEDRO_STATE_REFRESH_PID_FILE"
     printf '[%s] state refresher loop started pid=%s interval=%ss\n' "$(pedro_log_ts)" "$$" "$INTERVAL" >> "$PEDRO_STATE_REFRESH_LOG_FILE"
     while true; do
+      sync_photo_rotator
       if "$SCRIPT_DIR/refresh-all-state.sh" >> "$PEDRO_STATE_REFRESH_LOG_FILE" 2>&1; then
         printf '[%s] refresh ok\n' "$(pedro_log_ts)" >> "$PEDRO_STATE_REFRESH_LOG_FILE"
       else

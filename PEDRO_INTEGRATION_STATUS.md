@@ -1,5 +1,11 @@
 # Pedro Dashboard — integration lock after MVP UI
 
+## Slideshow no-repeat rounds — fixed 2026-09-18
+
+The 277-photo album now uses a persistent shuffled playback queue. Inventory refreshes no longer reshuffle an unfinished round; a new shuffle happens only after exhaustion. Current slide and queue position commit atomically in media.json, survive process restarts, and remain private to the server's state file. Additions join the next round; deletions are skipped. Existing 5s cadence and fullscreen/dashboard timing are unchanged; no kiosk or service restart was performed.
+
+Verification: 87/87 tests PASS before and after deployment; 277 native CLI invocations produced 277 unique selections despite five inventory reorders; live observation across a natural album refresh preserved the queue for 56 consecutive selections without repeats/skips/resets. Independent review PASS. Full evidence, exact hashes, limitations and rollback backup: [SLIDESHOW_CYCLES_2026-09-18.md](docs/releases/SLIDESHOW_CYCLES_2026-09-18.md).
+
 Status: v1.1 milestone accepted on 2026-06-15. v1.1 is the household readability/polish baseline after Kamila/Jurand feedback. Do not redesign layout casually while connecting sources.
 
 ## Slot runtime v1 — implemented and verified 2026-09-06

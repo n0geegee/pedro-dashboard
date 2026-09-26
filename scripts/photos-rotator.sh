@@ -2,7 +2,7 @@
 # Pedro Dashboard — slideshow rotator loop.
 #
 # Calls refresh-photos-slideshow.py every PEDRO_GOOGLE_PHOTOS_SLIDE_SECONDS
-# (default 5s) so the kiosk gets a fresh image_url on every poll cycle.
+# (default 3s) so the kiosk gets a fresh image_url on every poll cycle.
 # The Python script itself advances `pick_image` by one slot per call (it
 # remembers the previous index in media.json.slideshow.current), so calling
 # this loop at slide-second cadence gives "next image every N seconds" —
@@ -18,8 +18,8 @@
 #   scripts/photos-rotator.sh --start        # daemonise
 #   scripts/photos-rotator.sh --stop
 #   scripts/photos-rotator.sh --status
-#   scripts/photos-rotator.sh --loop --interval 5   # foreground loop
-#   PEDRO_PHOTOS_ROTATOR_INTERVAL=5 scripts/photos-rotator.sh --start
+#   scripts/photos-rotator.sh --loop --interval 3   # foreground loop
+#   PEDRO_PHOTOS_ROTATOR_INTERVAL=3 scripts/photos-rotator.sh --start
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -29,8 +29,20 @@ source "$SCRIPT_DIR/_lifecycle_common.sh"
 PROBE="$SCRIPT_DIR/refresh-photos-slideshow.py"
 PID_FILE="$PEDRO_RUN_DIR/photos-rotator.pid"
 LOG_FILE="$PEDRO_LOG_DIR/photos-rotator.log"
+ROTATOR_LOCK_FILE="${PEDRO_PHOTOS_ROTATOR_LOCK_FILE:-/var/lock/pedro-photos-rotator.lock}"
+START_LOCK_FILE="${PEDRO_PHOTOS_ROTATOR_START_LOCK_FILE:-/var/lock/pedro-photos-rotator-start.lock}"
 
-INTERVAL="${PEDRO_PHOTOS_ROTATOR_INTERVAL:-${PEDRO_GOOGLE_PHOTOS_SLIDE_SECONDS:-5}}"
+# /var/lock is normally writable by the kiosk user. Fall back to the private
+# run directory on hosts where it is not, while keeping all invocations on the
+# same lock paths.
+if ! ( : > "$ROTATOR_LOCK_FILE" ) 2>/dev/null; then
+  ROTATOR_LOCK_FILE="$PEDRO_RUN_DIR/photos-rotator.lock"
+fi
+if ! ( : > "$START_LOCK_FILE" ) 2>/dev/null; then
+  START_LOCK_FILE="$PEDRO_RUN_DIR/photos-rotator-start.lock"
+fi
+
+INTERVAL="${PEDRO_PHOTOS_ROTATOR_INTERVAL:-${PEDRO_GOOGLE_PHOTOS_SLIDE_SECONDS:-3}}"
 ACTION="status"
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -48,6 +60,11 @@ while [[ $# -gt 0 ]]; do
 done
 
 pedro_ensure_dirs
+
+if ! awk -v interval="$INTERVAL" 'BEGIN { exit !(interval ~ /^[0-9]+([.][0-9]+)?$/ && interval > 0) }'; then
+  echo "invalid interval: $INTERVAL" >&2
+  exit 64
+fi
 
 # _lifecycle_common.sh does not export PY_BIN; it exposes PEDRO_SERVER_CMD
 # (default "python3") which is what refresh-all-state.sh also uses. We
@@ -68,6 +85,19 @@ is_ours() {
   fi
 }
 
+is_ours_interval() {
+  local pid="${1:-}"
+  local expected="${2:-}"
+  [[ "$(is_ours "$pid")" == "1" ]] || { echo 0; return 0; }
+  local cmd
+  cmd="$(pedro_pid_cmdline "$pid")"
+  if [[ "$cmd" =~ (^|[[:space:]])--interval[=[:space:]]${expected}([[:space:]]|$) ]]; then
+    echo 1
+  else
+    echo 0
+  fi
+}
+
 read_pid() {
   [[ -f "$PID_FILE" ]] || { echo ""; return 0; }
   tr -d '[:space:]' < "$PID_FILE" 2>/dev/null || true
@@ -77,13 +107,19 @@ case "$ACTION" in
   status)
     pid="$(read_pid)"
     if [[ "$(is_ours "$pid")" == "1" ]]; then
-      echo "photos rotator running: pid=$pid interval=${INTERVAL}s log=$LOG_FILE"
-      exit 0
+      if [[ "$(is_ours_interval "$pid" "$INTERVAL")" == "1" ]]; then
+        echo "photos rotator running: pid=$pid interval=${INTERVAL}s log=$LOG_FILE"
+        exit 0
+      fi
+      echo "photos rotator running with a different interval: pid=$pid expected=${INTERVAL}s" >&2
+      exit 2
     fi
     echo "photos rotator stopped"
     exit 1
     ;;
   stop)
+    exec 8>"$START_LOCK_FILE"
+    flock -w 10 8 || { echo "photos rotator: could not acquire start lock" >&2; exit 75; }
     pid="$(read_pid)"
     if [[ -z "$pid" ]] || [[ "$(is_ours "$pid")" == "0" ]]; then
       rm -f "$PID_FILE"
@@ -105,13 +141,28 @@ case "$ACTION" in
     exit 1
     ;;
   start)
+    exec 8>"$START_LOCK_FILE"
+    flock -w 10 8 || { echo "photos rotator: could not acquire start lock" >&2; exit 75; }
     pid="$(read_pid)"
     if [[ "$(is_ours "$pid")" == "1" ]]; then
-      echo "photos rotator already running: pid=$pid interval=${INTERVAL}s"
-      exit 0
+      if [[ "$(is_ours_interval "$pid" "$INTERVAL")" == "1" ]]; then
+        echo "photos rotator already running: pid=$pid interval=${INTERVAL}s"
+        exit 0
+      fi
+      echo "photos rotator interval mismatch: replacing pid=$pid with interval=${INTERVAL}s"
+      kill "$pid" 2>/dev/null || true
+      for _ in 1 2 3 4 5; do
+        [[ "$(is_ours "$pid")" == "1" ]] || break
+        sleep 1
+      done
+      if [[ "$(is_ours "$pid")" == "1" ]]; then
+        kill -KILL "$pid" 2>/dev/null || true
+      fi
     fi
     rm -f "$PID_FILE"
-    setsid "$0" --loop --interval "$INTERVAL" >> "$LOG_FILE" 2>&1 </dev/null &
+    # Do not let the child inherit fd 8, otherwise it would hold the
+    # start lock for the entire lifetime of the rotator.
+    setsid "$0" --loop --interval "$INTERVAL" >> "$LOG_FILE" 2>&1 </dev/null 8>&- &
     newpid=$!
     for _ in 1 2 3 4 5 6 7 8 9 10; do
       [[ "$(is_ours "$newpid")" == "1" ]] && break
@@ -127,13 +178,18 @@ case "$ACTION" in
     ;;
   loop)
     # foreground loop. Detach via setsid in the --start case above.
+    exec 9>"$ROTATOR_LOCK_FILE"
+    if ! flock -n 9; then
+      printf '[%s] photos rotator loop skipped: another owner is active\n' "$(date +%Y-%m-%dT%H:%M:%S.%3N%z)" >&2
+      exit 0
+    fi
     echo "$BASHPID" > "$PID_FILE"
     trap 'rm -f "$PID_FILE"; exit 0' INT TERM EXIT
     pedro_log_ts() { date +%Y-%m-%dT%H:%M:%S.%3N%z; }
     printf '[%s] photos rotator loop started pid=%s interval=%ss\n' "$(pedro_log_ts)" "$$" "$INTERVAL" >> "$LOG_FILE"
     while true; do
-      started="$(date +%s.%N)"
-      if "$PY_BIN" "$PROBE" 2>&1 | while IFS= read -r line; do
+      started_at="$(date +%s.%N)"
+      if PEDRO_GOOGLE_PHOTOS_SLIDE_SECONDS="$INTERVAL" "$PY_BIN" "$PROBE" --no-manifest-refresh 2>&1 | while IFS= read -r line; do
              printf '[%s] %s\n' "$(pedro_log_ts)" "$line"
            done >> "$LOG_FILE"; then
         :
@@ -141,15 +197,12 @@ case "$ACTION" in
         rc=$?
         printf '[%s] photos rotator: probe failed rc=%s\n' "$(pedro_log_ts)" "$rc" >> "$LOG_FILE"
       fi
-      # Compute how long the probe took and sleep the remainder of the
-      # interval. Plain `sleep $INTERVAL` drifts because probe + sleep
-      # = INTERVAL + drift, and after many cycles the kiosk would see
-      # one image per 5.3s instead of one per 5.0s — close enough that
-      # you would not notice, but still wrong. Anchor on wall clock.
-      now="$(date +%s.%N)"
-      elapsed=$(awk -v s="$started" -v n="$now" 'BEGIN{printf "%.3f", n-s}')
-      remaining=$(awk -v i="$INTERVAL" -v e="$elapsed" 'BEGIN{v=i-e; if(v<0)v=0; printf "%.3f", v}')
-      sleep "$remaining"
+      finished_at="$(date +%s.%N)"
+      # Compensate only when the probe finished within the configured dwell.
+      # After an overrun, wait a full interval instead of sleeping zero.
+      sleep_for="$(awk -v interval="$INTERVAL" -v started="$started_at" -v finished="$finished_at" \
+        'BEGIN { elapsed = finished - started; remaining = interval - elapsed; if (remaining > 0 && remaining < interval) print remaining; else print interval }')"
+      sleep "$sleep_for"
     done
     ;;
   *)

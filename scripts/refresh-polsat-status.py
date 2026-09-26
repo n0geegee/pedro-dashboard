@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _probe_common import atomic_write, now_iso, resolve_state_dir  # noqa: E402
+from _probe_common import atomic_write, media_state_lock, now_iso, resolve_state_dir  # noqa: E402
 
 WIDGET = "media"
 DEFAULT_TTL = 120
@@ -67,30 +67,31 @@ def main(argv: list[str] | None = None) -> int:
 
     state_dir = resolve_state_dir(args.out)
     state_dir.mkdir(parents=True, exist_ok=True)
-    path = out_path(state_dir)
-    media = load_media(path)
-    data = media.setdefault("data", {})
-    running = polsat_window_running()
-    data["transmission"] = {
-        "provider": "polsat_box_go_web",
-        "mode": "external_chrome_profile",
-        "channel": "Polsat Sport 1",
-        "title": "Polsat Sport 1 przez Polsat Box Go",
-        "status_label": "OKNO OTWARTE" if running else "GOTOWE DO LOGOWANIA",
-        "live": running,
-        "url": POLSAT_URL,
-        "launcher": LAUNCHER,
-        "profile_dir": PROFILE_DIR,
-        "legal_note": "Use the normal Polsat Box Go website/account; do not extract or bypass streams/DRM.",
-        "last_health_check": now_iso(),
-    }
-    media["status"] = "ok"
-    media["updated_at"] = now_iso()
-    media["ttl_seconds"] = args.ttl
-    media["error"] = None
-    atomic_write(path, media)
-    print(f"wrote {path} (polsat_running={running})")
-    return 0
+    with media_state_lock(state_dir):
+        path = out_path(state_dir)
+        media = load_media(path)
+        data = media.setdefault("data", {})
+        running = polsat_window_running()
+        data["transmission"] = {
+            "provider": "polsat_box_go_web",
+            "mode": "external_chrome_profile",
+            "channel": "Polsat Sport 1",
+            "title": "Polsat Sport 1 przez Polsat Box Go",
+            "status_label": "OKNO OTWARTE" if running else "GOTOWE DO LOGOWANIA",
+            "live": running,
+            "url": POLSAT_URL,
+            "launcher": LAUNCHER,
+            "profile_dir": PROFILE_DIR,
+            "legal_note": "Use the normal Polsat Box Go website/account; do not extract or bypass streams/DRM.",
+            "last_health_check": now_iso(),
+        }
+        media["status"] = "ok"
+        media["updated_at"] = now_iso()
+        media["ttl_seconds"] = args.ttl
+        media["error"] = None
+        atomic_write(path, media)
+        print(f"wrote {path} (polsat_running={running})")
+        return 0
 
 
 if __name__ == "__main__":

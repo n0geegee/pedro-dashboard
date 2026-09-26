@@ -57,7 +57,7 @@ fi
 # Live probes: overwrite mock baseline with real operational/user state.
 # refresh-photos-slideshow.py is skipped here when photos-rotator.sh is
 # already running, because that rotator calls the probe every slide_seconds
-# (5s) on its own loop. Running it from both loops at the same time
+# (3s) on its own loop. Running it from both loops at the same time
 # produces a race on media.json.slideshow.current that makes the kiosk
 # occasionally skip a photo. If the rotator is not running, the photos
 # probe still runs here at the 20s state-refresher cadence so the kiosk
@@ -66,13 +66,18 @@ PHOTOS_PID_FILE="$PEDRO_RUN_DIR/photos-rotator.pid"
 photos_owned=0
 if [[ -f "$PHOTOS_PID_FILE" ]]; then
   photos_pid="$(tr -d '[:space:]' < "$PHOTOS_PID_FILE" 2>/dev/null || true)"
-  if [[ "$photos_pid" =~ ^[0-9]+$ ]] && kill -0 "$photos_pid" 2>/dev/null; then
+  if [[ "$photos_pid" =~ ^[0-9]+$ ]] && \
+      [[ "$(pedro_pid_matches_all "$photos_pid" "photos-rotator.sh" "--loop")" == "1" ]]; then
     photos_owned=1
   fi
 fi
-for probe in refresh-system-status.py refresh-hermes-status.py refresh-openviking-status.py refresh-season-skin.py refresh-weather-status.py refresh-route-status.py refresh-polsat-status.py refresh-photos-slideshow.py refresh-kamila-calendar.py refresh-vnl-volleyball.py; do
+for probe in refresh-system-status.py refresh-hermes-status.py refresh-openviking-status.py refresh-season-skin.py refresh-weather-status.py refresh-route-status.py refresh-polsat-status.py refresh-photos-slideshow.py refresh-kamila-calendar.py refresh-vnl-volleyball.py refresh-eurovolley.py; do
   if [[ -f "$SCRIPT_DIR/$probe" ]]; then
     if [[ "$probe" == "refresh-photos-slideshow.py" ]] && [[ "$photos_owned" == "1" ]]; then
+      # The hot rotator must never wait on a network album refresh. Keep the
+      # cached queue current in a separate manifest-only operation; it never
+      # reads or writes media.json.
+      "$PY_BIN" "$SCRIPT_DIR/$probe" --manifest-only >/dev/null || status=$?
       continue
     fi
     probe_py="$PY_BIN"

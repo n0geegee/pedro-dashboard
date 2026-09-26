@@ -205,6 +205,16 @@ check_once() {
       fi
     fi
   fi
+
+  # The slideshow switch is a local desired-state file.  Keep its dedicated
+  # photo loop alive without touching Chrome or the separate Polsat window.
+  if [[ -x "$SCRIPT_DIR/pedro-display-switch.py" ]]; then
+    if "$SCRIPT_DIR/pedro-display-switch.py" sync >>"$PEDRO_WATCHDOG_LOG_FILE" 2>&1; then
+      pedro_log "watchdog-dashboard.sh: slideshow rotator reconciled"
+    else
+      pedro_log "watchdog-dashboard.sh: slideshow rotator reconciliation failed"
+    fi
+  fi
   return 0
 }
 
